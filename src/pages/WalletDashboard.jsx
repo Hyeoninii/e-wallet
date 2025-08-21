@@ -1,22 +1,29 @@
+// src/pages/WalletDashboard.jsx (RPC 버전)
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../contexts/WalletContext';
-import { ethers } from 'ethers';
-import { weiToEth, shortenAddress, copyToClipboard } from '../utils/wallet';
+import { shortenAddress, copyToClipboard } from '../utils/wallet';
 
 /**
- * 지갑 대시보드 컴포넌트
- * 지갑 정보, 잔액, 송금 기능 제공
+ * RPC 통신을 사용하는 지갑 대시보드
  */
 const WalletDashboard = () => {
   const navigate = useNavigate();
   const { 
     currentWallet, 
-    provider, 
     isReadOnly, 
-    disconnectWallet, 
+    disconnectWallet,
     error, 
-    clearError 
+    clearError,
+    isLoading,
+    rpcClient,
+    currentNetwork,
+    availableNetworks,
+    getBalance,
+    sendEther,
+    getTransactionReceipt,
+    switchNetwork,
+    getGasPrice
   } = useWallet();
 
   // 상태 관리
@@ -25,12 +32,14 @@ const WalletDashboard = () => {
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [currentGasPrice, setCurrentGasPrice] = useState('20');
 
   // 송금 폼 상태
   const [sendForm, setSendForm] = useState({
     to: '',
     amount: '',
-    gasPrice: '20' // Gwei
+    gasPrice: '20'
   });
 
   // 트랜잭션 상태
@@ -47,27 +56,35 @@ const WalletDashboard = () => {
   }, [currentWallet, navigate]);
 
   /**
-   * 잔액 조회
+   * 잔액 조회 및 가스 가격 조회
    */
   useEffect(() => {
-    if (currentWallet?.address && provider) {
-      fetchBalance();
+    if (currentWallet?.address && rpcClient) {
+      fetchWalletInfo();
     }
-  }, [currentWallet, provider]);
+  }, [currentWallet, rpcClient, currentNetwork]);
 
   /**
-   * 잔액 조회 함수
+   * 지갑 정보 조회 (잔액 + 가스 가격)
    */
-  const fetchBalance = async () => {
-    if (!currentWallet?.address || !provider) return;
+  const fetchWalletInfo = async () => {
+    if (!currentWallet?.address || !rpcClient) return;
 
     try {
       setIsLoadingBalance(true);
-      const balanceWei = await provider.getBalance(currentWallet.address);
-      const balanceEth = weiToEth(balanceWei);
-      setBalance(balanceEth);
+      
+      // 병렬로 잔액과 가스 가격 조회
+      const [walletBalance, gasPrice] = await Promise.all([
+        getBalance(currentWallet.address),
+        getGasPrice()
+      ]);
+      
+      setBalance(walletBalance);
+      setCurrentGasPrice(gasPrice);
+      setSendForm(prev => ({ ...prev, gasPrice }));
+      
     } catch (error) {
-      console.error('잔액 조회 실패:', error);
+      console.error('지갑 정보 조회 실패:', error);
     } finally {
       setIsLoadingBalance(false);
     }
@@ -87,10 +104,10 @@ const WalletDashboard = () => {
   };
 
   /**
-   * 송금 실행
+   * RPC 직접 통신으로 송금 실행
    */
   const handleSendTransaction = async () => {
-    if (!currentWallet?.privateKey || !provider) {
+    if (!currentWallet?.privateKey || !rpcClient) {
       return;
     }
 
@@ -103,89 +120,51 @@ const WalletDashboard = () => {
         throw new Error('수신 주소와 금액을 입력해주세요.');
       }
 
-      // 지갑 생성
-      const wallet = new ethers.Wallet(currentWallet.privateKey, provider);
+      // 잔액 확인
+      const currentBalance = parseFloat(balance);
+      const sendAmount = parseFloat(sendForm.amount);
       
-      // 현재 잔액 확인
-      const balance = await provider.getBalance(wallet.address);
-      const amountWei = ethers.parseEther(sendForm.amount);
-      
-      if (balance < amountWei) {
+      if (currentBalance < sendAmount) {
         throw new Error('잔액이 부족합니다.');
       }
 
-      // 가스 한도 추정
-      const gasLimit = await provider.estimateGas({
-        from: wallet.address,
+      console.log('RPC 송금 시작:', {
+        from: currentWallet.address,
         to: sendForm.to,
-        value: amountWei
+        amount: sendForm.amount + ' ETH',
+        gasPrice: sendForm.gasPrice + ' Gwei',
+        network: currentNetwork.name
       });
 
-      // 트랜잭션 생성
-      const tx = {
-        to: sendForm.to,
-        value: amountWei,
-        gasLimit: gasLimit,
-        gasPrice: ethers.parseUnits(sendForm.gasPrice, 'gwei')
-      };
-
-      console.log('트랜잭션 정보:', {
-        from: wallet.address,
-        to: sendForm.to,
-        value: ethers.formatEther(amountWei) + ' ETH',
-        gasLimit: gasLimit.toString(),
-        gasPrice: ethers.formatUnits(tx.gasPrice, 'gwei') + ' Gwei'
+      // RPC를 통해 ETH 전송
+      const txHash = await sendEther(sendForm.to, sendForm.amount, {
+        gasPrice: sendForm.gasPrice
       });
-
-      // 트랜잭션 전송
-      const response = await wallet.sendTransaction(tx);
       
-      console.log('트랜잭션 해시:', response.hash);
+      console.log('RPC 트랜잭션 전송 완료:', txHash);
       
       // 트랜잭션 정보 저장
       setLastTransaction({
-        hash: response.hash,
+        hash: txHash,
         to: sendForm.to,
         amount: sendForm.amount,
         timestamp: new Date().toISOString(),
-        status: 'pending'
+        status: 'pending',
+        network: currentNetwork.name
       });
       
-      // 트랜잭션 영수증 대기 (실제 블록에 포함될 때까지)
-      alert(`트랜잭션이 전송되었습니다!\n해시: ${response.hash}\n\n블록에 포함될 때까지 기다리는 중...`);
+      // 성공 알림
+      alert(`트랜잭션이 전송되었습니다!\n해시: ${txHash}\n\n블록에 포함될 때까지 기다리는 중...`);
       
-      // 트랜잭션 영수증 대기
-      const receipt = await response.wait();
+      // 트랜잭션 영수증 대기 (백그라운드에서)
+      waitForTransactionReceipt(txHash);
       
-      console.log('트랜잭션 영수증:', receipt);
-      
-      if (receipt.status === 1) {
-        // 성공 처리
-        setShowSendModal(false);
-        setSendForm({ to: '', amount: '', gasPrice: '20' });
-        
-        // 트랜잭션 상태 업데이트
-        setLastTransaction(prev => ({
-          ...prev,
-          status: 'success',
-          blockNumber: receipt.blockNumber,
-          gasUsed: receipt.gasUsed.toString()
-        }));
-        
-        // 잔액 새로고침
-        setTimeout(fetchBalance, 2000);
-        
-        alert(`✅ 트랜잭션이 성공적으로 완료되었습니다!\n\n해시: ${response.hash}\n블록 번호: ${receipt.blockNumber}\n가스 사용량: ${receipt.gasUsed.toString()}`);
-      } else {
-        setLastTransaction(prev => ({
-          ...prev,
-          status: 'failed'
-        }));
-        throw new Error('트랜잭션이 실패했습니다.');
-      }
+      // 송금 모달 닫기 및 폼 초기화
+      setShowSendModal(false);
+      setSendForm({ to: '', amount: '', gasPrice: currentGasPrice });
       
     } catch (error) {
-      console.error('송금 실패:', error);
+      console.error('RPC 송금 실패:', error);
       
       if (lastTransaction) {
         setLastTransaction(prev => ({
@@ -195,12 +174,13 @@ const WalletDashboard = () => {
         }));
       }
       
-      if (error.code === 'INSUFFICIENT_FUNDS') {
+      // 에러 타입별 처리
+      if (error.message.includes('insufficient funds')) {
         alert('❌ 송금에 실패했습니다: 잔액이 부족합니다.');
-      } else if (error.code === 'UNPREDICTABLE_GAS_LIMIT') {
-        alert('❌ 송금에 실패했습니다: 가스 한도를 계산할 수 없습니다. 주소를 확인해주세요.');
-      } else if (error.message.includes('nonce')) {
-        alert('❌ 송금에 실패했습니다: nonce 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      } else if (error.message.includes('invalid address')) {
+        alert('❌ 송금에 실패했습니다: 유효하지 않은 주소입니다.');
+      } else if (error.message.includes('gas')) {
+        alert('❌ 송금에 실패했습니다: 가스 관련 오류입니다.');
       } else {
         alert(`❌ 송금에 실패했습니다: ${error.message}`);
       }
@@ -210,22 +190,102 @@ const WalletDashboard = () => {
   };
 
   /**
-   * 트랜잭션 상태 확인
+   * 트랜잭션 영수증 대기 (비동기)
+   */
+  const waitForTransactionReceipt = async (txHash) => {
+    try {
+      let attempts = 0;
+      const maxAttempts = 30; // 5분 대기 (10초 간격)
+      
+      const checkReceipt = async () => {
+        try {
+          const receipt = await getTransactionReceipt(txHash);
+          
+          if (receipt) {
+            console.log('트랜잭션 영수증 받음:', receipt);
+            
+            const success = rpcClient.hexToDecimal(receipt.status) === 1;
+            
+            // 트랜잭션 상태 업데이트
+            setLastTransaction(prev => ({
+              ...prev,
+              status: success ? 'success' : 'failed',
+              blockNumber: rpcClient.hexToDecimal(receipt.blockNumber),
+              gasUsed: rpcClient.hexToDecimal(receipt.gasUsed)
+            }));
+            
+            // 잔액 새로고침
+            setTimeout(fetchWalletInfo, 2000);
+            
+            // 완료 알림
+            if (success) {
+              alert(`✅ 트랜잭션이 성공적으로 완료되었습니다!\n\n해시: ${txHash}\n블록 번호: ${rpcClient.hexToDecimal(receipt.blockNumber)}\n가스 사용량: ${rpcClient.hexToDecimal(receipt.gasUsed)}`);
+            } else {
+              alert(`❌ 트랜잭션이 실패했습니다.\n\n해시: ${txHash}`);
+            }
+            
+            return;
+          }
+          
+          // 아직 영수증이 없으면 재시도
+          attempts++;
+          if (attempts < maxAttempts) {
+            setTimeout(checkReceipt, 10000); // 10초 후 재시도
+          } else {
+            console.log('트랜잭션 영수증 대기 시간 초과');
+            setLastTransaction(prev => ({
+              ...prev,
+              status: 'timeout'
+            }));
+          }
+        } catch (error) {
+          console.error('트랜잭션 영수증 확인 실패:', error);
+          attempts++;
+          if (attempts < maxAttempts) {
+            setTimeout(checkReceipt, 10000);
+          }
+        }
+      };
+      
+      // 첫 번째 확인은 5초 후
+      setTimeout(checkReceipt, 5000);
+      
+    } catch (error) {
+      console.error('트랜잭션 영수증 대기 실패:', error);
+    }
+  };
+
+  /**
+   * 트랜잭션 상태 수동 확인
    */
   const checkTransactionStatus = async (hash) => {
-    if (!hash || !provider) return;
+    if (!hash || !rpcClient) return;
     
     try {
-      const receipt = await provider.getTransactionReceipt(hash);
+      const receipt = await getTransactionReceipt(hash);
       if (receipt) {
-        console.log('트랜잭션 영수증:', receipt);
-        alert(`트랜잭션 상태:\n\n해시: ${hash}\n상태: ${receipt.status === 1 ? '성공' : '실패'}\n블록 번호: ${receipt.blockNumber}\n가스 사용량: ${receipt.gasUsed.toString()}`);
+        const success = rpcClient.hexToDecimal(receipt.status) === 1;
+        alert(`트랜잭션 상태:\n\n해시: ${hash}\n상태: ${success ? '성공' : '실패'}\n블록 번호: ${rpcClient.hexToDecimal(receipt.blockNumber)}\n가스 사용량: ${rpcClient.hexToDecimal(receipt.gasUsed)}`);
       } else {
         alert('트랜잭션이 아직 블록에 포함되지 않았습니다.');
       }
     } catch (error) {
       console.error('트랜잭션 상태 확인 실패:', error);
       alert('트랜잭션 상태를 확인할 수 없습니다.');
+    }
+  };
+
+  /**
+   * 네트워크 변경
+   */
+  const handleNetworkChange = async (networkKey) => {
+    try {
+      await switchNetwork(networkKey);
+      setShowNetworkModal(false);
+      // 잠시 후 지갑 정보 새로고침
+      setTimeout(fetchWalletInfo, 1000);
+    } catch (error) {
+      console.error('네트워크 변경 실패:', error);
     }
   };
 
@@ -259,18 +319,31 @@ const WalletDashboard = () => {
               <div>
                 <h1 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>{currentWallet.name}</h1>
                 <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-                  {isReadOnly ? '읽기 전용' : '개인 지갑'}
+                  {isReadOnly ? '읽기 전용' : '개인 지갑'} • {currentNetwork.name}
                 </p>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
-                onClick={fetchBalance}
+                onClick={() => setShowNetworkModal(true)}
+                style={{ 
+                  padding: '8px 12px', 
+                  fontSize: '12px', 
+                  border: '1px solid #d1d5db', 
+                  borderRadius: '6px', 
+                  backgroundColor: 'white', 
+                  cursor: 'pointer' 
+                }}
+              >
+                네트워크
+              </button>
+              <button
+                onClick={fetchWalletInfo}
                 disabled={isLoadingBalance}
                 style={{ padding: '8px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
-                title="잔액 새로고침"
+                title="새로고침"
               >
-                {isLoadingBalance ? '⟳' : '⟳'}
+                {isLoadingBalance ? '⟳' : '↻'}
               </button>
               <button
                 onClick={disconnectWallet}
@@ -316,8 +389,6 @@ const WalletDashboard = () => {
                       borderRadius: '8px', 
                       border: 'none',
                       cursor: isTransactionPending ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
                       opacity: isTransactionPending ? 0.6 : 1
                     }}
                   >
@@ -363,10 +434,16 @@ const WalletDashboard = () => {
               </div>
             </div>
 
-            {/* 네트워크 정보 */}
-            <div>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>네트워크</label>
-              <p style={{ color: '#111827', margin: 0 }}>Sepolia Testnet</p>
+            {/* 네트워크 및 가스 정보 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>네트워크</label>
+                <p style={{ color: '#111827', margin: 0 }}>{currentNetwork.name}</p>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>현재 가스 가격</label>
+                <p style={{ color: '#111827', margin: 0 }}>{currentGasPrice} Gwei</p>
+              </div>
             </div>
           </div>
 
@@ -425,11 +502,18 @@ const WalletDashboard = () => {
                     fontSize: '14px', 
                     fontWeight: '600',
                     color: lastTransaction.status === 'success' ? '#059669' : 
-                           lastTransaction.status === 'failed' ? '#dc2626' : '#d97706'
+                           lastTransaction.status === 'failed' ? '#dc2626' : 
+                           lastTransaction.status === 'timeout' ? '#d97706' : '#6366f1'
                   }}>
                     {lastTransaction.status === 'success' ? '✅ 성공' : 
-                     lastTransaction.status === 'failed' ? '❌ 실패' : '⏳ 처리 중'}
+                     lastTransaction.status === 'failed' ? '❌ 실패' : 
+                     lastTransaction.status === 'timeout' ? '⏰ 시간초과' : '⏳ 처리 중'}
                   </span>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '500' }}>네트워크:</span>
+                  <span style={{ fontSize: '14px' }}>{lastTransaction.network}</span>
                 </div>
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -473,7 +557,7 @@ const WalletDashboard = () => {
                     상태 확인
                   </button>
                   <button
-                    onClick={() => window.open(`https://sepolia.etherscan.io/tx/${lastTransaction.hash}`, '_blank')}
+                    onClick={() => window.open(`${currentNetwork.blockExplorer}/tx/${lastTransaction.hash}`, '_blank')}
                     style={{
                       padding: '8px 12px',
                       fontSize: '12px',
@@ -483,7 +567,7 @@ const WalletDashboard = () => {
                       cursor: 'pointer'
                     }}
                   >
-                    Etherscan에서 보기
+                    탐색기에서 보기
                   </button>
                 </div>
               </div>
@@ -491,6 +575,70 @@ const WalletDashboard = () => {
           )}
         </div>
       </div>
+
+      {/* 네트워크 변경 모달 */}
+      {showNetworkModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '100%',
+            maxWidth: '400px',
+            margin: '0 16px'
+          }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 16px 0' }}>네트워크 변경</h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              {Object.entries(availableNetworks).map(([key, network]) => (
+                <button
+                  key={key}
+                  onClick={() => handleNetworkChange(key)}
+                  disabled={isLoading}
+                  style={{
+                    padding: '12px',
+                    textAlign: 'left',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    backgroundColor: currentNetwork.chainId === network.chainId ? '#eff6ff' : 'white',
+                    cursor: 'pointer',
+                    opacity: isLoading ? 0.6 : 1
+                  }}
+                >
+                  <div style={{ fontWeight: '500' }}>{network.name}</div>
+                  <div style={{ fontSize: '12px', color: '#6b7280' }}>Chain ID: {network.chainId}</div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowNetworkModal(false)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #d1d5db',
+                color: '#374151',
+                borderRadius: '8px',
+                backgroundColor: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 송금 모달 */}
       {showSendModal && (
@@ -514,7 +662,7 @@ const WalletDashboard = () => {
             maxWidth: '400px',
             margin: '0 16px'
           }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 16px 0' }}>송금</h3>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 16px 0' }}>RPC 송금</h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
@@ -554,6 +702,9 @@ const WalletDashboard = () => {
                     fontSize: '14px'
                   }}
                 />
+                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                  잔액: {balance} ETH
+                </div>
               </div>
               
               <div>
@@ -573,12 +724,30 @@ const WalletDashboard = () => {
                     fontSize: '14px'
                   }}
                 />
+                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                  현재 네트워크 가스 가격: {currentGasPrice} Gwei
+                </div>
               </div>
+            </div>
+
+            {/* RPC 통신 안내 */}
+            <div style={{ 
+              marginTop: '16px', 
+              padding: '12px', 
+              backgroundColor: '#eff6ff', 
+              border: '1px solid #dbeafe', 
+              borderRadius: '8px' 
+            }}>
+              <p style={{ fontSize: '12px', color: '#1d4ed8', margin: 0 }}>
+                🔗 <strong>RPC 직접 통신</strong><br />
+                이 송금은 {currentNetwork.name}에 직접 RPC 호출로 전송됩니다.
+              </p>
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button
                 onClick={() => setShowSendModal(false)}
+                disabled={isTransactionPending}
                 style={{
                   flex: 1,
                   padding: '12px',
@@ -586,14 +755,15 @@ const WalletDashboard = () => {
                   color: '#374151',
                   borderRadius: '8px',
                   backgroundColor: 'white',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  opacity: isTransactionPending ? 0.6 : 1
                 }}
               >
                 취소
               </button>
               <button
                 onClick={handleSendTransaction}
-                disabled={!sendForm.to || !sendForm.amount}
+                disabled={!sendForm.to || !sendForm.amount || isTransactionPending}
                 style={{
                   flex: 1,
                   padding: '12px',
@@ -602,10 +772,10 @@ const WalletDashboard = () => {
                   borderRadius: '8px',
                   border: 'none',
                   cursor: 'pointer',
-                  opacity: (!sendForm.to || !sendForm.amount) ? 0.5 : 1
+                  opacity: (!sendForm.to || !sendForm.amount || isTransactionPending) ? 0.5 : 1
                 }}
               >
-                송금
+                {isTransactionPending ? '송금 중...' : 'RPC 송금'}
               </button>
             </div>
           </div>
