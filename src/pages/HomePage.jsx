@@ -12,6 +12,7 @@ const HomePage = () => {
     selectWallet, 
     openWalletByAddress, 
     recoverWalletByPrivateKey,
+    recoverWalletByMnemonic,
     isLoading, 
     error, 
     clearError 
@@ -20,9 +21,10 @@ const HomePage = () => {
   // 주소 입력 상태
   const [addressInput, setAddressInput] = useState('');
   const [privateKeyInput, setPrivateKeyInput] = useState('');
+  const [mnemonicInput, setMnemonicInput] = useState('');
   const [walletNameInput, setWalletNameInput] = useState('');
   const [showAddressInput, setShowAddressInput] = useState(false);
-  const [openMode, setOpenMode] = useState('address'); // 'address' or 'privateKey'
+  const [openMode, setOpenMode] = useState('address'); // 'address', 'privateKey', or 'mnemonic'
 
   /**
    * 새 지갑 생성 페이지로 이동
@@ -66,6 +68,27 @@ const HomePage = () => {
   };
 
   /**
+   * 니모닉으로 지갑 열기 (진짜 지갑)
+   */
+  const handleOpenByMnemonic = async () => {
+    if (!mnemonicInput.trim() || !walletNameInput.trim()) {
+      return;
+    }
+
+    try {
+      clearError();
+      console.log('니모닉 입력값:', mnemonicInput.trim());
+      console.log('지갑 이름:', walletNameInput.trim());
+      
+      await recoverWalletByMnemonic(mnemonicInput.trim(), walletNameInput.trim());
+      navigate('/wallet');
+    } catch (error) {
+      console.error('니모닉 지갑 열기 실패:', error);
+      // 에러는 컨텍스트에서 처리됨
+    }
+  };
+
+  /**
    * 저장된 지갑 선택
    */
   const handleSelectWallet = (wallet) => {
@@ -80,6 +103,7 @@ const HomePage = () => {
     setShowAddressInput(false);
     setAddressInput('');
     setPrivateKeyInput('');
+    setMnemonicInput('');
     setWalletNameInput('');
     setOpenMode('address');
   };
@@ -188,17 +212,19 @@ const HomePage = () => {
             
             {/* 모드 선택 */}
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap' }}>
                 <button
                   onClick={() => setOpenMode('address')}
                   style={{
                     flex: 1,
+                    minWidth: '120px',
                     padding: '10px',
                     border: '1px solid #ccc',
                     borderRadius: '4px',
                     backgroundColor: openMode === 'address' ? '#0066cc' : 'white',
                     color: openMode === 'address' ? 'white' : '#333',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    fontSize: '12px'
                   }}
                 >
                   주소로 열기 (읽기 전용)
@@ -207,15 +233,33 @@ const HomePage = () => {
                   onClick={() => setOpenMode('privateKey')}
                   style={{
                     flex: 1,
+                    minWidth: '120px',
                     padding: '10px',
                     border: '1px solid #ccc',
                     borderRadius: '4px',
                     backgroundColor: openMode === 'privateKey' ? '#0066cc' : 'white',
                     color: openMode === 'privateKey' ? 'white' : '#333',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    fontSize: '12px'
                   }}
                 >
-                  개인키로 열기 (트랜잭션 가능)
+                  개인키로 열기
+                </button>
+                <button
+                  onClick={() => setOpenMode('mnemonic')}
+                  style={{
+                    flex: 1,
+                    minWidth: '120px',
+                    padding: '10px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    backgroundColor: openMode === 'mnemonic' ? '#0066cc' : 'white',
+                    color: openMode === 'mnemonic' ? 'white' : '#333',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  니모닉으로 열기
                 </button>
               </div>
             </div>
@@ -289,6 +333,63 @@ const HomePage = () => {
               </div>
             )}
 
+            {/* 니모닉 모드 */}
+            {openMode === 'mnemonic' && (
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                  지갑 이름
+                </label>
+                <input
+                  type="text"
+                  value={walletNameInput}
+                  onChange={(e) => setWalletNameInput(e.target.value)}
+                  placeholder="내 지갑"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    marginBottom: '15px'
+                  }}
+                />
+                
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                  니모닉 구문 (12단어) - 메타마스크와 동일한 주소 생성
+                </label>
+                <textarea
+                  value={mnemonicInput}
+                  onChange={(e) => setMnemonicInput(e.target.value)}
+                  placeholder="steak entry begin fox napkin original almost pilot ladder multiply guide coil"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    marginBottom: '10px',
+                    minHeight: '80px',
+                    resize: 'vertical',
+                    fontFamily: 'monospace',
+                    fontSize: '14px'
+                  }}
+                  onKeyPress={(e) => e.key === 'Enter' && handleOpenByMnemonic()}
+                />
+                <div style={{ fontSize: '12px', color: '#666', marginBottom: '20px' }}>
+                  <p style={{ margin: '0 0 8px 0' }}>
+                    <strong>입력 형식:</strong> 12개의 영어 단어를 공백으로 구분하여 입력
+                  </p>
+                  <p style={{ margin: '0 0 8px 0' }}>
+                    <strong>예시:</strong> steak entry begin fox napkin original almost pilot ladder multiply guide coil
+                  </p>
+                  <p style={{ margin: '0 0 8px 0' }}>
+                    <strong>주의:</strong> 대소문자는 자동으로 처리되며, 여러 줄이나 탭은 무시됩니다.
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    니모닉 구문을 입력하면 트랜잭션을 보낼 수 있는 진짜 지갑으로 열립니다.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={handleCloseModal}
@@ -303,10 +404,15 @@ const HomePage = () => {
                 취소
               </button>
               <button
-                onClick={openMode === 'address' ? handleOpenByAddress : handleOpenByPrivateKey}
+                onClick={
+                  openMode === 'address' ? handleOpenByAddress : 
+                  openMode === 'privateKey' ? handleOpenByPrivateKey :
+                  openMode === 'mnemonic' ? handleOpenByMnemonic : handleOpenByAddress
+                }
                 disabled={
                   (openMode === 'address' && !addressInput.trim()) ||
                   (openMode === 'privateKey' && (!privateKeyInput.trim() || !walletNameInput.trim())) ||
+                  (openMode === 'mnemonic' && (!mnemonicInput.trim() || !walletNameInput.trim())) ||
                   isLoading
                 }
                 style={{
@@ -320,6 +426,7 @@ const HomePage = () => {
                   opacity: (
                     (openMode === 'address' && !addressInput.trim()) ||
                     (openMode === 'privateKey' && (!privateKeyInput.trim() || !walletNameInput.trim())) ||
+                    (openMode === 'mnemonic' && (!mnemonicInput.trim() || !walletNameInput.trim())) ||
                     isLoading
                   ) ? 0.5 : 1
                 }}

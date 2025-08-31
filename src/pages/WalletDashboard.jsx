@@ -383,7 +383,7 @@ const WalletDashboard = () => {
             </div>
           </div>
 
-          {/* 개인키 정보 (읽기 전용이 아닌 경우) */}
+          {/* w 정보 (읽기 전용이 아닌 경우) */}
           {!isReadOnly && currentWallet.privateKey && (
             <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 16px 0' }}>개인키</h3>

@@ -42,13 +42,12 @@ export const loadWalletData = (key) => {
  */
 export const createNewWallet = (name) => {
   try {
-    // 128비트 엔트로피로 12단어 니모닉 생성
+    // 128비트 엔트로피로 12단어 니모닉 생성 (Ethers.js v6 방식)
     const entropy = ethers.randomBytes(16);
-    const mnemonic = ethers.Mnemonic.entropyToPhrase(entropy);
+    const mnemonic = ethers.entropyToPhrase(entropy);
     
-    // HD 지갑 생성 (BIP44 경로: m/44'/60'/0'/0/0)
-    const hdNode = ethers.HDNodeWallet.fromPhrase(mnemonic);
-    const wallet = hdNode.deriveChild(0);
+    // HD 지갑 생성 (메타마스크와 동일한 BIP44 경로: m/44'/60'/0'/0/0)
+    const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic);
     
     const walletData = {
       name,
@@ -74,27 +73,64 @@ export const createNewWallet = (name) => {
  */
 export const recoverWalletFromMnemonic = (mnemonic, name) => {
   try {
-    // 니모닉 유효성 검사
-    if (!ethers.Mnemonic.isValidPhrase(mnemonic)) {
-      throw new Error('유효하지 않은 니모닉입니다.');
+    console.log('니모닉 복구 시작:', { mnemonic: mnemonic.substring(0, 20) + '...', name });
+    
+    // 입력된 니모닉 정리 (공백 제거, 소문자 변환)
+    const cleanedMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
+    console.log('정리된 니모닉:', cleanedMnemonic);
+    
+    // 니모닉 단어 수 확인
+    const words = cleanedMnemonic.split(' ');
+    console.log('단어 목록:', words);
+    console.log('단어 수:', words.length);
+    
+    if (words.length !== 12) {
+      throw new Error(`니모닉은 정확히 12단어여야 합니다. 현재 ${words.length}단어입니다.`);
     }
     
-    const hdNode = ethers.HDNodeWallet.fromPhrase(mnemonic);
-    const wallet = hdNode.deriveChild(0);
+    console.log('니모닉 단어 수 확인 통과');
     
-    const walletData = {
-      name,
-      address: wallet.address,
-      mnemonic,
-      privateKey: wallet.privateKey,
-      createdAt: new Date().toISOString(),
-      type: 'hd'
-    };
+    // 각 단어가 BIP39 단어 목록에 있는지 확인
+    try {
+      // Ethers.js v6 방식으로 니모닉 유효성 검사
+      console.log('HDNodeWallet.fromPhrase 시도...');
+      const hdNode = ethers.HDNodeWallet.fromPhrase(cleanedMnemonic);
+      console.log('HDNodeWallet 생성 성공');
+      
+      // fromPhrase는 이미 m/44'/60'/0'/0/0 경로의 지갑을 반환하므로 추가 파생 불필요
+      const wallet = hdNode;
+      
+      console.log('지갑 생성 성공:', wallet.address);
+      console.log('파생 경로: m/44\'/60\'/0\'/0/0 (기본값)');
+      
+      const walletData = {
+        name,
+        address: wallet.address,
+        mnemonic: cleanedMnemonic,
+        privateKey: wallet.privateKey,
+        createdAt: new Date().toISOString(),
+        type: 'hd'
+      };
+      
+      return walletData;
+    } catch (phraseError) {
+      console.error('니모닉 구문 오류 상세:', phraseError);
+      console.error('오류 메시지:', phraseError.message);
+      console.error('오류 스택:', phraseError.stack);
+      
+      // 더 구체적인 에러 메시지 제공
+      if (phraseError.message.includes('invalid mnemonic')) {
+        throw new Error('유효하지 않은 니모닉입니다. BIP39 단어 목록에 없는 단어가 포함되어 있습니다.');
+      } else if (phraseError.message.includes('checksum')) {
+        throw new Error('니모닉 체크섬이 올바르지 않습니다. 단어를 다시 확인해주세요.');
+      } else {
+        throw new Error('유효하지 않은 니모닉입니다: ' + phraseError.message);
+      }
+    }
     
-    return walletData;
   } catch (error) {
     console.error('니모닉 복구 실패:', error);
-    throw new Error('지갑 복구에 실패했습니다.');
+    throw new Error('지갑 복구에 실패했습니다: ' + error.message);
   }
 };
 
