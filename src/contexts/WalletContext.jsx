@@ -60,11 +60,38 @@ export const WalletProvider = ({ children }) => {
       setIsLoading(true);
       setError(null);
 
-      // Sepolia 테스트넷 프로바이더 설정
-      const sepoliaProvider = new ethers.JsonRpcProvider(
-        'https://sepolia.infura.io/v3/c2d38e26cb7f47d792611197ed4807dd'
-      );
-      setProvider(sepoliaProvider);
+      // 프록시를 통한 노드 연결 (CORS 문제 해결)
+      const proxyUrl = `${window.location.origin}/api/ethereum`;
+      console.log('프록시 URL:', proxyUrl);
+      
+      const customProvider = new ethers.JsonRpcProvider(proxyUrl);
+      
+      // 네트워크 정보 확인 및 연결 테스트
+      try {
+        console.log('노드 연결 시도 중...');
+        
+        // 연결 테스트 (더 간단한 방법)
+        const blockNumber = await customProvider.getBlockNumber();
+        console.log('현재 블록 번호:', blockNumber);
+        
+        const network = await customProvider.getNetwork();
+        console.log('연결된 네트워크:', network);
+        
+        console.log('✅ 노드 연결 성공!');
+      } catch (error) {
+        console.error('❌ 노드 연결 실패:', error);
+        console.error('에러 타입:', error.constructor.name);
+        console.error('에러 메시지:', error.message);
+        
+        // CORS 에러인지 확인
+        if (error.message.includes('CORS') || error.message.includes('cors')) {
+          setError('CORS 오류: 노드에서 브라우저 접근을 허용하지 않습니다. 프록시 서버가 필요합니다.');
+        } else {
+          setError('노드 연결에 실패했습니다: ' + error.message);
+        }
+      }
+      
+      setProvider(customProvider);
 
       // 저장된 지갑 목록 불러오기
       loadSavedWallets();

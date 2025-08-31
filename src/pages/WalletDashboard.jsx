@@ -59,12 +59,25 @@ const WalletDashboard = () => {
    * 잔액 조회 함수
    */
   const fetchBalance = async () => {
-    if (!currentWallet?.address || !provider) return;
+    console.log('fetchBalance 호출됨');
+    console.log('currentWallet:', currentWallet);
+    console.log('provider:', provider);
+    
+    if (!currentWallet?.address || !provider) {
+      console.log('조건 불만족: 주소 또는 프로바이더 없음');
+      return;
+    }
 
     try {
       setIsLoadingBalance(true);
+      console.log('잔액 조회 시작:', currentWallet.address);
+      
       const balanceWei = await provider.getBalance(currentWallet.address);
+      console.log('Wei 잔액:', balanceWei.toString());
+      
       const balanceEth = weiToEth(balanceWei);
+      console.log('ETH 잔액:', balanceEth);
+      
       setBalance(balanceEth);
     } catch (error) {
       console.error('잔액 조회 실패:', error);
@@ -366,7 +379,7 @@ const WalletDashboard = () => {
             {/* 네트워크 정보 */}
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#6b7280', marginBottom: '8px' }}>네트워크</label>
-              <p style={{ color: '#111827', margin: 0 }}>Sepolia Testnet</p>
+              <p style={{ color: '#111827', margin: 0 }}>Custom Node (100.67.242.15:13500)</p>
             </div>
           </div>
 
