@@ -209,13 +209,13 @@ const WalletDashboard = () => {
       }
       
       if (error.code === 'INSUFFICIENT_FUNDS') {
-        alert('❌ 송금에 실패했습니다: 잔액이 부족합니다.');
+        alert('송금에 실패했습니다: 잔액이 부족합니다.');
       } else if (error.code === 'UNPREDICTABLE_GAS_LIMIT') {
-        alert('❌ 송금에 실패했습니다: 가스 한도를 계산할 수 없습니다. 주소를 확인해주세요.');
+        alert('송금에 실패했습니다: 가스 한도를 계산할 수 없습니다. 주소를 확인해주세요.');
       } else if (error.message.includes('nonce')) {
-        alert('❌ 송금에 실패했습니다: nonce 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+        alert('송금에 실패했습니다: nonce 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
       } else {
-        alert(`❌ 송금에 실패했습니다: ${error.message}`);
+        alert(`송금에 실패했습니다: ${error.message}`);
       }
     } finally {
       setIsTransactionPending(false);
@@ -383,7 +383,7 @@ const WalletDashboard = () => {
             </div>
           </div>
 
-          {/* 개인키 정보 (읽기 전용이 아닌 경우) */}
+          {/* w 정보 (읽기 전용이 아닌 경우) */}
           {!isReadOnly && currentWallet.privateKey && (
             <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 16px 0' }}>개인키</h3>
