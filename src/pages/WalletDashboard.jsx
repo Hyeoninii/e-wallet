@@ -209,13 +209,13 @@ const WalletDashboard = () => {
       }
       
       if (error.code === 'INSUFFICIENT_FUNDS') {
-        alert('❌ 송금에 실패했습니다: 잔액이 부족합니다.');
+        alert('송금에 실패했습니다: 잔액이 부족합니다.');
       } else if (error.code === 'UNPREDICTABLE_GAS_LIMIT') {
-        alert('❌ 송금에 실패했습니다: 가스 한도를 계산할 수 없습니다. 주소를 확인해주세요.');
+        alert('송금에 실패했습니다: 가스 한도를 계산할 수 없습니다. 주소를 확인해주세요.');
       } else if (error.message.includes('nonce')) {
-        alert('❌ 송금에 실패했습니다: nonce 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+        alert('송금에 실패했습니다: nonce 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
       } else {
-        alert(`❌ 송금에 실패했습니다: ${error.message}`);
+        alert(`송금에 실패했습니다: ${error.message}`);
       }
     } finally {
       setIsTransactionPending(false);
