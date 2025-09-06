@@ -440,8 +440,8 @@ const WalletDashboard = () => {
                     color: lastTransaction.status === 'success' ? '#059669' : 
                            lastTransaction.status === 'failed' ? '#dc2626' : '#d97706'
                   }}>
-                    {lastTransaction.status === 'success' ? '✅ 성공' : 
-                     lastTransaction.status === 'failed' ? '❌ 실패' : '⏳ 처리 중'}
+                    {lastTransaction.status === 'success' ? '성공' : 
+                     lastTransaction.status === 'failed' ? '실패' : '처리 중'}
                   </span>
                 </div>
                 
@@ -496,7 +496,7 @@ const WalletDashboard = () => {
                       cursor: 'pointer'
                     }}
                   >
-                    Etherscan에서 보기
+                    Sepolia Etherscan에서 보기
                   </button>
                 </div>
               </div>
