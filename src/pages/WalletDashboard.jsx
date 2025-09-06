@@ -188,7 +188,7 @@ const WalletDashboard = () => {
         // 잔액 새로고침
         setTimeout(fetchBalance, 2000);
         
-        alert(`✅ 트랜잭션이 성공적으로 완료되었습니다!\n\n해시: ${response.hash}\n블록 번호: ${receipt.blockNumber}\n가스 사용량: ${receipt.gasUsed.toString()}`);
+        alert(` 트랜잭션이 성공적으로 완료되었습니다!\n\n해시: ${response.hash}\n블록 번호: ${receipt.blockNumber}\n가스 사용량: ${receipt.gasUsed.toString()}`);
       } else {
         setLastTransaction(prev => ({
           ...prev,

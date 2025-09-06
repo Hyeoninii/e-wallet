@@ -354,7 +354,7 @@ const HomePage = () => {
                 />
                 
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                  니모닉 구문 (12단어) - 메타마스크와 동일한 주소 생성
+                  니모닉 구문 (12단어)
                 </label>
                 <textarea
                   value={mnemonicInput}

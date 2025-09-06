@@ -176,7 +176,7 @@ const CreateWalletPage = () => {
             {/* 보안 경고 */}
             <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-yellow-800 text-sm">
-                ⚠️ <strong>중요:</strong> 이 니모닉은 한 번만 표시됩니다. 
+                * <strong>중요:</strong> 이 니모닉은 한 번만 표시됩니다. 
                 안전한 곳에 기록하고 절대 다른 사람과 공유하지 마세요.
               </p>
             </div>
