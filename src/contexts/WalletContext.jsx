@@ -60,11 +60,11 @@ export const WalletProvider = ({ children }) => {
       setIsLoading(true);
       setError(null);
 
-      // Sepolia 테스트넷 연결 (공개 RPC 사용)
-      const rpcUrl = 'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161';
-      console.log('RPC URL:', rpcUrl);
+      // 프록시를 통한 노드 연결 (CORS 문제 해결)
+      const proxyUrl = `${window.location.origin}/api/ethereum`;
+      console.log('프록시 URL:', proxyUrl);
       
-      const customProvider = new ethers.JsonRpcProvider(rpcUrl);
+      const customProvider = new ethers.JsonRpcProvider(proxyUrl);
       
       // 네트워크 정보 확인 및 연결 테스트
       try {
