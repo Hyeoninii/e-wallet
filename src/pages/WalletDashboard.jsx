@@ -388,36 +388,27 @@ const WalletDashboard = () => {
             <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 16px 0' }}>개인키</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showPrivateKey ? 'text' : 'password'}
-                    value={currentWallet.privateKey}
-                    readOnly
-                    style={{ 
-                      width: '100%', 
-                      padding: '12px', 
-                      paddingRight: '48px',
-                      backgroundColor: '#f9fafb', 
-                      border: '1px solid #e5e7eb', 
-                      borderRadius: '8px', 
-                      fontSize: '14px', 
-                      fontFamily: 'monospace'
-                    }}
-                  />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <code style={{ 
+                    flex: 1, 
+                    padding: '12px', 
+                    backgroundColor: '#f9fafb', 
+                    borderRadius: '8px', 
+                    fontSize: '14px', 
+                    fontFamily: 'monospace',
+                    border: '1px solid #e5e7eb',
+                    wordBreak: 'break-all',
+                    whiteSpace: 'pre-wrap',
+                    minWidth: 0
+                  }}>
+                    {showPrivateKey ? currentWallet.privateKey : '•'.repeat(currentWallet.privateKey.length)}
+                  </code>
                   <button
                     onClick={() => setShowPrivateKey(!showPrivateKey)}
-                    style={{ 
-                      position: 'absolute', 
-                      right: '12px', 
-                      top: '50%', 
-                      transform: 'translateY(-50%)', 
-                      padding: '4px', 
-                      border: 'none',
-                      backgroundColor: 'transparent',
-                      cursor: 'pointer'
-                    }}
+                    style={{ padding: '8px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
+                    title="개인키 표시/숨김"
                   >
-                    {showPrivateKey ? '🙈' : '👁️'}
+                    {showPrivateKey ? 'Hide' : 'Show'}
                   </button>
                 </div>
                 <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>

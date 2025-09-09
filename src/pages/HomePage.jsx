@@ -313,20 +313,32 @@ const HomePage = () => {
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
                   개인키
                 </label>
-                <input
-                  type="password"
-                  value={privateKeyInput}
-                  onChange={(e) => setPrivateKeyInput(e.target.value)}
-                  placeholder="0x..."
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    marginBottom: '20px'
-                  }}
-                  onKeyPress={(e) => e.key === 'Enter' && handleOpenByPrivateKey()}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <code style={{ 
+                    flex: 1, 
+                    padding: '12px', 
+                    backgroundColor: '#f9fafb', 
+                    borderRadius: '8px', 
+                    fontSize: '14px', 
+                    fontFamily: 'monospace',
+                    border: '1px solid #e5e7eb',
+                    wordBreak: 'break-all',
+                    whiteSpace: 'pre-wrap',
+                    minWidth: 0
+                  }}>
+                    {privateKeyInput.length > 0 ? 
+                      privateKeyInput.match(/.{1,32}/g)?.join('\n') || privateKeyInput :
+                      '•'.repeat(32) + '\n' + '•'.repeat(32) + '\n' + '•'.repeat(32)
+                    }
+                  </code>
+                  <button
+                    onClick={() => setPrivateKeyInput('')} // Clear input on button click
+                    style={{ padding: '8px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
+                    title="개인키 표시/숨김"
+                  >
+                    {privateKeyInput.length > 0 ? 'Hide' : 'Show'}
+                  </button>
+                </div>
                 <p style={{ fontSize: '12px', color: '#666', marginBottom: '20px' }}>
                   개인키를 입력하면 트랜잭션을 보낼 수 있는 진짜 지갑으로 열립니다.
                 </p>
