@@ -1,14 +1,8 @@
-// SPDX-License-Identifier: MIT
-// COMPILER VERSION UPDATED to match the imported contract's requirement.
 pragma solidity ^0.8.20;
 
-// Import ReentrancyGuard from OpenZeppelin to prevent re-entry attacks.
+//to prevent re-entry attacks.
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.2/contracts/utils/ReentrancyGuard.sol";
 
-/**
- * @title Highly Improved Multi-Signature Wallet
- * @dev This contract has been hardened against front-running, gas limit DoS, and reentrancy attacks.
- */
 contract ImprovedMultiSigWallet is ReentrancyGuard {
     // --- Events ---
     event Deposit(address indexed sender, uint amount, uint balance);

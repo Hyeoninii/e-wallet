@@ -66,32 +66,41 @@ export const WalletProvider = ({ children }) => {
       
       const customProvider = new ethers.JsonRpcProvider(proxyUrl);
       
-      // 네트워크 정보 확인 및 연결 테스트
+      // 네트워크 정보 확인 및 연결 테스트 (10초 타임아웃)
       try {
         console.log('노드 연결 시도 중...');
         
-        // 연결 테스트 (더 간단한 방법)
-        const blockNumber = await customProvider.getBlockNumber();
+        // 10초 타임아웃 설정
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000);
+        });
+        
+        // 연결 테스트와 타임아웃을 경쟁시킴
+        const connectionPromise = Promise.all([
+          customProvider.getBlockNumber(),
+          customProvider.getNetwork()
+        ]);
+        
+        const [blockNumber, network] = await Promise.race([
+          connectionPromise,
+          timeoutPromise
+        ]);
+        
         console.log('현재 블록 번호:', blockNumber);
-        
-        const network = await customProvider.getNetwork();
         console.log('연결된 네트워크:', network);
+        console.log('Custom 노드 연결 성공!');
         
-        console.log('✅ 노드 연결 성공!');
+        setProvider(customProvider);
+        
       } catch (error) {
-        console.error('❌ 노드 연결 실패:', error);
+        console.error('Custom 노드 연결 실패:', error);
         console.error('에러 타입:', error.constructor.name);
         console.error('에러 메시지:', error.message);
         
-        // CORS 에러인지 확인
-        if (error.message.includes('CORS') || error.message.includes('cors')) {
-          setError('CORS 오류: 노드에서 브라우저 접근을 허용하지 않습니다. 프록시 서버가 필요합니다.');
-        } else {
-          setError('노드 연결에 실패했습니다: ' + error.message);
-        }
+        // Infura로 자동 전환
+        console.log('Infura로 자동 전환 중...');
+        await connectToInfura();
       }
-      
-      setProvider(customProvider);
 
       // 저장된 지갑 목록 불러오기
       loadSavedWallets();
@@ -101,6 +110,37 @@ export const WalletProvider = ({ children }) => {
       setError('지갑 시스템 초기화에 실패했습니다: ' + error.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  /**
+   * Infura 연결
+   */
+  const connectToInfura = async () => {
+    try {
+      const infuraApiKey = '5dc76d758e1444e18669946ef9b04d0c';
+      const infuraUrl = `https://sepolia.infura.io/v3/${infuraApiKey}`;
+      
+      console.log('Infura 연결 시도 중...');
+      
+      const infuraProvider = new ethers.JsonRpcProvider(infuraUrl);
+      
+      // Infura 연결 테스트
+      const blockNumber = await infuraProvider.getBlockNumber();
+      const network = await infuraProvider.getNetwork();
+      
+      console.log('Infura 블록 번호:', blockNumber);
+      console.log('Infura 네트워크:', network);
+      console.log('✅ Infura 연결 성공!');
+      
+      setProvider(infuraProvider);
+      
+      // 사용자에게 알림
+      setError('Custom 노드 연결 실패로 Infura로 자동 전환되었습니다.');
+      
+    } catch (error) {
+      console.error('Infura 연결 실패:', error);
+      setError('모든 노드 연결에 실패했습니다. 네트워크를 확인해주세요.');
     }
   };
 

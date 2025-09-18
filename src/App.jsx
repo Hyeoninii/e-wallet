@@ -2,10 +2,26 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { WalletProvider } from './contexts/WalletContext';
 
+// 레이아웃 컴포넌트
+import Layout from './components/Layout';
+
 // 페이지 컴포넌트들
 import HomePage from './pages/HomePage';
-import WalletDashboard from './pages/WalletDashboard';
 import CreateWalletPage from './pages/CreateWalletPage';
+
+// 대시보드 페이지들
+import DashboardPage from './pages/DashboardPage';
+import SendPage from './pages/SendPage';
+import ReceivePage from './pages/ReceivePage';
+import TransactionsPage from './pages/TransactionsPage';
+import SettingsPage from './pages/SettingsPage';
+
+// 다중 서명 페이지들
+import CreateMultiSigPage from './pages/CreateMultiSigPage';
+import MultiSigDashboardPage from './pages/MultiSigDashboardPage';
+import MultiSigSendPage from './pages/MultiSigSendPage';
+import MultiSigTransactionsPage from './pages/MultiSigTransactionsPage';
+import MultiSigMembersPage from './pages/MultiSigMembersPage';
 
 /**
  * 메인 App 컴포넌트
@@ -14,7 +30,7 @@ import CreateWalletPage from './pages/CreateWalletPage';
 function App() {
   return (
     <WalletProvider>
-      <div>
+      <Layout>
         <Routes>
           {/* 홈 페이지 - 지갑 생성/열기 선택 */}
           <Route path="/" element={<HomePage />} />
@@ -22,10 +38,21 @@ function App() {
           {/* 지갑 생성 페이지 */}
           <Route path="/create" element={<CreateWalletPage />} />
           
-          {/* 지갑 대시보드 */}
-          <Route path="/wallet" element={<WalletDashboard />} />
+          {/* 대시보드 페이지들 */}
+          <Route path="/wallet" element={<DashboardPage />} />
+          <Route path="/wallet/send" element={<SendPage />} />
+          <Route path="/wallet/receive" element={<ReceivePage />} />
+          <Route path="/wallet/transactions" element={<TransactionsPage />} />
+          <Route path="/wallet/settings" element={<SettingsPage />} />
+          
+          {/* 다중 서명 페이지들 */}
+          <Route path="/multisig/create" element={<CreateMultiSigPage />} />
+          <Route path="/multisig" element={<MultiSigDashboardPage />} />
+          <Route path="/multisig/send" element={<MultiSigSendPage />} />
+          <Route path="/multisig/transactions" element={<MultiSigTransactionsPage />} />
+          <Route path="/multisig/members" element={<MultiSigMembersPage />} />
         </Routes>
-      </div>
+      </Layout>
     </WalletProvider>
   );
 }
