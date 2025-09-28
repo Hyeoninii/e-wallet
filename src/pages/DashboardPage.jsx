@@ -13,7 +13,8 @@ const DashboardPage = () => {
     provider, 
     isReadOnly, 
     error, 
-    clearError 
+    clearError,
+    savedMultiSigWallets
   } = useWallet();
 
   // 상태 관리
@@ -238,6 +239,56 @@ const DashboardPage = () => {
           </div>
         )}
         
+        {/* 다중 서명 지갑 섹션 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">다중 서명 지갑</h3>
+            <button 
+              onClick={() => window.location.href = '/multisig/create'}
+              className="bg-purple-600 text-white px-3 py-1 rounded-md text-sm font-medium hover:bg-purple-700 transition-colors"
+            >
+              + 생성
+            </button>
+          </div>
+          
+          {savedMultiSigWallets.length > 0 ? (
+            <div className="space-y-3">
+              {savedMultiSigWallets.map((wallet, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">{wallet.name}</h4>
+                      <p className="text-sm text-gray-500 font-mono">{wallet.address}</p>
+                      <p className="text-xs text-gray-400">
+                        소유자 {wallet.owners.length}명, 임계값 {wallet.threshold}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => window.location.href = `/multisig/${wallet.address}`}
+                      className="bg-purple-100 text-purple-700 px-3 py-1 rounded-md text-sm font-medium hover:bg-purple-200 transition-colors"
+                    >
+                      열기
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+              </svg>
+              <p className="text-sm">아직 다중 서명 지갑이 없습니다</p>
+              <button 
+                onClick={() => window.location.href = '/multisig/create'}
+                className="mt-2 text-purple-600 hover:text-purple-700 text-sm font-medium"
+              >
+                첫 번째 다중 서명 지갑 생성하기
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">최근 활동</h3>
           <div className="text-center py-8 text-gray-500">

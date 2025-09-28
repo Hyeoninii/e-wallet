@@ -8,6 +8,13 @@ import {
   recoverWalletFromPrivateKey,
   isValidAddress
 } from '../utils/wallet';
+import { 
+  deployMultiSigWallet, 
+  getMultiSigWallet, 
+  getMultiSigWalletInfo,
+  validateOwners,
+  validateThreshold
+} from '../utils/multisig';
 
 // 지갑 컨텍스트 생성
 const WalletContext = createContext();
@@ -35,6 +42,9 @@ export const WalletProvider = ({ children }) => {
   
   // 저장된 지갑 목록
   const [savedWallets, setSavedWallets] = useState([]);
+  
+  // 저장된 다중 서명 지갑 목록
+  const [savedMultiSigWallets, setSavedMultiSigWallets] = useState([]);
   
   // 로딩 상태
   const [isLoading, setIsLoading] = useState(false);
@@ -105,6 +115,9 @@ export const WalletProvider = ({ children }) => {
       // 저장된 지갑 목록 불러오기
       loadSavedWallets();
       
+      // 저장된 다중 서명 지갑 목록 불러오기
+      loadSavedMultiSigWallets();
+      
     } catch (error) {
       console.error('지갑 초기화 실패:', error);
       setError('지갑 시스템 초기화에 실패했습니다: ' + error.message);
@@ -153,6 +166,18 @@ export const WalletProvider = ({ children }) => {
       setSavedWallets(wallets);
     } catch (error) {
       console.error('저장된 지갑 불러오기 실패:', error);
+    }
+  };
+
+  /**
+   * 저장된 다중 서명 지갑 목록 불러오기
+   */
+  const loadSavedMultiSigWallets = () => {
+    try {
+      const multiSigWallets = loadWalletData('savedMultiSigWallets') || [];
+      setSavedMultiSigWallets(multiSigWallets);
+    } catch (error) {
+      console.error('저장된 다중 서명 지갑 불러오기 실패:', error);
     }
   };
 
@@ -323,6 +348,130 @@ export const WalletProvider = ({ children }) => {
   };
 
   /**
+   * 다중 서명 지갑 생성
+   * @param {string} name - 지갑 이름
+   * @param {Array} owners - 소유자 주소 목록
+   * @param {number} threshold - 임계값
+   * @returns {Object} 생성된 다중 서명 지갑 정보
+   */
+  const createMultiSigWallet = async (name, owners, threshold) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      if (!provider) {
+        throw new Error('네트워크에 연결되지 않았습니다.');
+      }
+
+      if (!currentWallet) {
+        throw new Error('현재 지갑이 선택되지 않았습니다.');
+      }
+
+      // 소유자 및 임계값 유효성 검사
+      const ownerValidation = validateOwners(owners);
+      if (!ownerValidation.valid) {
+        throw new Error(ownerValidation.error);
+      }
+
+      const thresholdValidation = validateThreshold(threshold, ownerValidation.owners.length);
+      if (!thresholdValidation.valid) {
+        throw new Error(thresholdValidation.error);
+      }
+
+      // 다중 서명 지갑 배포
+      const deployedWallet = await deployMultiSigWallet(
+        provider,
+        currentWallet.privateKey,
+        ownerValidation.owners,
+        threshold
+      );
+
+      // 다중 서명 지갑 데이터 생성
+      const multiSigWalletData = {
+        name,
+        address: deployedWallet.address,
+        owners: ownerValidation.owners,
+        threshold,
+        deploymentTx: deployedWallet.deploymentTx,
+        createdAt: new Date().toISOString(),
+        type: 'multisig',
+        pending: deployedWallet.pending || false
+      };
+
+      // 현재 로컬 스토리지에서 최신 다중 서명 지갑 목록 불러오기
+      const currentMultiSigWallets = loadWalletData('savedMultiSigWallets') || [];
+      console.log('현재 저장된 다중 서명 지갑 목록:', currentMultiSigWallets);
+      
+      // 새로운 다중 서명 지갑 추가
+      const updatedMultiSigWallets = [...currentMultiSigWallets, multiSigWalletData];
+      setSavedMultiSigWallets(updatedMultiSigWallets);
+      
+      // 로컬 스토리지에 저장
+      const saveResult = saveWalletData('savedMultiSigWallets', updatedMultiSigWallets);
+      console.log('다중 서명 지갑 저장 결과:', saveResult);
+      console.log('저장된 다중 서명 지갑 목록:', updatedMultiSigWallets);
+
+      return multiSigWalletData;
+    } catch (error) {
+      console.error('다중 서명 지갑 생성 실패:', error);
+      setError(error.message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * 다중 서명 지갑 데이터 조회
+   * @param {string} address - 다중 서명 지갑 주소
+   * @returns {Object} 지갑 정보
+   */
+  const getMultiSigWalletData = async (address) => {
+    try {
+      if (!provider) {
+        throw new Error('네트워크에 연결되지 않았습니다.');
+      }
+
+      if (!ethers.isAddress(address)) {
+        throw new Error('유효하지 않은 주소입니다.');
+      }
+
+      // 컨트랙트 인스턴스 생성
+      const contract = getMultiSigWallet(provider, address);
+      
+      // 컨트랙트 정보 조회
+      const info = await getMultiSigWalletInfo(contract);
+      
+      return {
+        address,
+        owners: info.owners,
+        threshold: info.threshold,
+        balance: info.balance
+      };
+    } catch (error) {
+      console.error('다중 서명 지갑 데이터 조회 실패:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * 다중 서명 지갑 삭제
+   * @param {string} address - 삭제할 다중 서명 지갑 주소
+   */
+  const deleteMultiSigWallet = (address) => {
+    try {
+      const updatedMultiSigWallets = savedMultiSigWallets.filter(
+        wallet => wallet.address !== address
+      );
+      setSavedMultiSigWallets(updatedMultiSigWallets);
+      saveWalletData('savedMultiSigWallets', updatedMultiSigWallets);
+    } catch (error) {
+      console.error('다중 서명 지갑 삭제 실패:', error);
+      setError('다중 서명 지갑 삭제에 실패했습니다.');
+    }
+  };
+
+  /**
    * 에러 초기화
    */
   const clearError = () => {
@@ -334,6 +483,7 @@ export const WalletProvider = ({ children }) => {
     // 상태
     currentWallet,
     savedWallets,
+    savedMultiSigWallets,
     isLoading,
     error,
     provider,
@@ -347,6 +497,11 @@ export const WalletProvider = ({ children }) => {
     deleteWallet,
     disconnectWallet,
     clearError,
+    
+    // 다중 서명 지갑 액션
+    createMultiSigWallet,
+    getMultiSigWalletData,
+    deleteMultiSigWallet,
     
     // 유틸리티
     isConnected: !!currentWallet,

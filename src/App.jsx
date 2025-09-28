@@ -47,10 +47,10 @@ function App() {
           
           {/* 다중 서명 페이지들 */}
           <Route path="/multisig/create" element={<CreateMultiSigPage />} />
-          <Route path="/multisig" element={<MultiSigDashboardPage />} />
-          <Route path="/multisig/send" element={<MultiSigSendPage />} />
-          <Route path="/multisig/transactions" element={<MultiSigTransactionsPage />} />
-          <Route path="/multisig/members" element={<MultiSigMembersPage />} />
+          <Route path="/multisig/:address" element={<MultiSigDashboardPage />} />
+          <Route path="/multisig/:address/send" element={<MultiSigSendPage />} />
+          <Route path="/multisig/:address/transactions" element={<MultiSigTransactionsPage />} />
+          <Route path="/multisig/:address/members" element={<MultiSigMembersPage />} />
         </Routes>
       </Layout>
     </WalletProvider>

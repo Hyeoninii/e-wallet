@@ -1,27 +1,95 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useWallet } from '../contexts/WalletContext';
+import { ethers } from 'ethers';
 
 /**
  * 다중 서명 지갑 대시보드 페이지
  */
 const MultiSigDashboardPage = () => {
   const navigate = useNavigate();
-  
-  // 임시 데이터 (실제로는 props나 context에서 받아올 것)
-  const [multisigWallet] = useState({
-    name: '팀 지갑',
-    address: '0x1234567890123456789012345678901234567890',
-    owners: [
-      '0x1111111111111111111111111111111111111111',
-      '0x2222222222222222222222222222222222222222',
-      '0x3333333333333333333333333333333333333333'
-    ],
-    threshold: 2,
-    balance: '1.2345',
-    pendingTransactions: 3
-  });
+  const { address } = useParams();
+  const { provider, getMultiSigWalletData, savedMultiSigWallets, currentWallet } = useWallet();
 
-  const [currentUser] = useState('0x1111111111111111111111111111111111111111'); // 현재 사용자
+  const [multisigWallet, setMultisigWallet] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+
+        if (!address) {
+          throw new Error('주소가 제공되지 않았습니다.');
+        }
+        if (!provider) {
+          throw new Error('네트워크에 연결되지 않았습니다. 잠시 후 다시 시도하세요.');
+        }
+
+        // 트랜잭션 해시인지 확인 (0x로 시작하고 66자리)
+        const isTransactionHash = address.startsWith('0x') && address.length === 66;
+        
+        if (isTransactionHash) {
+          // 트랜잭션 해시인 경우 - 배포 대기 중 상태로 표시
+          setMultisigWallet({
+            name: '배포 대기 중',
+            address: address,
+            owners: [],
+            threshold: 0,
+            balance: '0',
+            pendingTransactions: 0,
+            deploymentTx: address,
+            createdAt: new Date().toISOString(),
+            pending: true
+          });
+          return;
+        }
+
+        // 실제 주소인 경우
+        if (!ethers.isAddress(address)) {
+          throw new Error('유효한 다중 서명 지갑 주소가 아닙니다.');
+        }
+
+        // 로컬 스토리지에서 다중 서명 지갑 정보 찾기
+        const savedWallet = savedMultiSigWallets.find(wallet => 
+          wallet.address.toLowerCase() === address.toLowerCase()
+        );
+
+        if (!savedWallet) {
+          throw new Error('저장된 다중 서명 지갑을 찾을 수 없습니다.');
+        }
+
+        // 실제 컨트랙트에서 정보 조회
+        const contractInfo = await getMultiSigWalletData(address);
+        
+        setMultisigWallet({
+          name: savedWallet.name,
+          address: contractInfo.address,
+          owners: contractInfo.owners,
+          threshold: Number(contractInfo.threshold),
+          balance: contractInfo.balance,
+          pendingTransactions: 0, // TODO: 실제 트랜잭션 수 조회
+          deploymentTx: savedWallet.deploymentTx,
+          createdAt: savedWallet.createdAt
+        });
+
+        // 현재 사용자 설정 (현재 지갑이 소유자 중 하나인지 확인)
+        if (currentWallet && contractInfo.owners.includes(currentWallet.address)) {
+          setCurrentUser(currentWallet.address);
+        }
+
+      } catch (e) {
+        console.error('멀티시그 로드 실패:', e);
+        setLoadError(e.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [address, provider, getMultiSigWalletData, savedMultiSigWallets, currentWallet]);
 
   /**
    * 주소 복사
@@ -37,13 +105,38 @@ const MultiSigDashboardPage = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {isLoading && (
+        <div className="text-center text-gray-500">지갑 정보를 불러오는 중...</div>
+      )}
+      {loadError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">{loadError}</div>
+      )}
+      {!isLoading && !loadError && multisigWallet && (
+        <>
       {/* 환영 메시지 */}
-      <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-6 text-white">
-        <h1 className="text-2xl font-bold mb-2">안녕하세요, {multisigWallet.name}!</h1>
-        <p className="text-purple-100">
-          다중 서명 지갑에 연결되었습니다. {multisigWallet.threshold}명의 승인이 필요한 트랜잭션을 관리할 수 있습니다.
-        </p>
-      </div>
+      {multisigWallet.pending ? (
+        <div className="bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg p-6 text-white">
+          <h1 className="text-2xl font-bold mb-2">배포 대기 중</h1>
+          <p className="text-yellow-100">
+            다중 서명 지갑이 배포되고 있습니다. 트랜잭션이 확인되면 정상적으로 사용할 수 있습니다.
+          </p>
+          <div className="mt-4 p-3 bg-yellow-100 bg-opacity-20 rounded-lg">
+            <p className="text-sm text-yellow-200">
+              트랜잭션 해시: {multisigWallet.address}
+            </p>
+            <p className="text-xs text-yellow-300 mt-1">
+              Etherscan에서 확인해보세요. 확인되면 페이지를 새로고침하세요.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-6 text-white">
+          <h1 className="text-2xl font-bold mb-2">안녕하세요, {multisigWallet.name}!</h1>
+          <p className="text-purple-100">
+            다중 서명 지갑에 연결되었습니다. {multisigWallet.threshold}명의 승인이 필요한 트랜잭션을 관리할 수 있습니다.
+          </p>
+        </div>
+      )}
 
       {/* 잔액 카드 */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -225,6 +318,8 @@ const MultiSigDashboardPage = () => {
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };
