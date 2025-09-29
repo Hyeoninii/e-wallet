@@ -1,66 +1,98 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useWallet } from '../contexts/WalletContext';
 
 /**
  * 다중 서명 트랜잭션 목록 및 승인 페이지
  */
 const MultiSigTransactionsPage = () => {
   const navigate = useNavigate();
+  const { address } = useParams();
+  const { provider, getMultiSigWalletData, currentWallet, getMultiSigWalletTransactions, confirmMultiSigTransaction, executeMultiSigTransaction } = useWallet();
   
-  // 임시 데이터
-  const [transactions] = useState([
-    {
-      id: 1,
-      proposer: '0x1111111111111111111111111111111111111111',
-      to: '0x1234567890123456789012345678901234567890',
-      value: '0.5',
-      description: '팀 보너스 지급',
-      status: 'pending',
-      confirmations: 1,
-      threshold: 2,
-      createdAt: '2024-01-15T10:30:00Z',
-      confirmedBy: ['0x1111111111111111111111111111111111111111']
-    },
-    {
-      id: 2,
-      proposer: '0x2222222222222222222222222222222222222222',
-      to: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
-      value: '0.1',
-      description: '마케팅 비용 지급',
-      status: 'pending',
-      confirmations: 0,
-      threshold: 2,
-      createdAt: '2024-01-15T09:15:00Z',
-      confirmedBy: []
-    },
-    {
-      id: 3,
-      proposer: '0x3333333333333333333333333333333333333333',
-      to: '0x9876543210987654321098765432109876543210',
-      value: '1.0',
-      description: '개발팀 급여',
-      status: 'executed',
-      confirmations: 2,
-      threshold: 2,
-      createdAt: '2024-01-14T16:45:00Z',
-      executedAt: '2024-01-14T17:30:00Z',
-      confirmedBy: ['0x1111111111111111111111111111111111111111', '0x2222222222222222222222222222222222222222']
-    }
-  ]);
+  // 다중서명 지갑 상태
+  const [multisigWallet, setMultisigWallet] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [walletError, setWalletError] = useState(null);
 
-  const [currentUser] = useState('0x1111111111111111111111111111111111111111');
+  // 트랜잭션 상태
+  const [transactions, setTransactions] = useState([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionError, setTransactionError] = useState(null);
+
+  // 다중서명 지갑 정보 로드
+  useEffect(() => {
+    const loadWallet = async () => {
+      try {
+        setIsLoading(true);
+        setWalletError(null);
+
+        if (!address) {
+          throw new Error('다중서명 지갑 주소가 제공되지 않았습니다.');
+        }
+
+        if (!provider) {
+          throw new Error('네트워크에 연결되지 않았습니다.');
+        }
+
+        console.log('다중서명 지갑 정보 로드 시작:', address);
+        const walletInfo = await getMultiSigWalletData(address);
+        console.log('다중서명 지갑 정보 로드 완료:', walletInfo);
+        
+        setMultisigWallet(walletInfo);
+        
+        // 트랜잭션 목록 로드
+        await loadTransactions();
+      } catch (error) {
+        console.error('다중서명 지갑 로드 실패:', error);
+        setWalletError(error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const loadTransactions = async () => {
+      try {
+        setTransactionsLoading(true);
+        setTransactionError(null);
+        
+        console.log('다중서명 트랜잭션 로드 시작:', address);
+        const txList = await getMultiSigWalletTransactions(address);
+        console.log('로드된 트랜잭션 수:', txList.length);
+        
+        setTransactions(txList);
+      } catch (error) {
+        console.error('트랜잭션 로드 실패:', error);
+        setTransactionError(error.message);
+        setTransactions([]);
+      } finally {
+        setTransactionsLoading(false);
+      }
+    };
+
+    loadWallet();
+  }, [address, provider, getMultiSigWalletData, getMultiSigWalletTransactions]);
+
+  const currentUser = currentWallet?.address || '0x0000000000000000000000000000000000000000';
 
   /**
    * 트랜잭션 승인
    */
   const handleConfirmTransaction = async (txId) => {
     try {
-      // TODO: 실제 승인 로직
-      console.log('트랜잭션 승인:', txId);
+      console.log('트랜잭션 승인 시작:', txId);
+      
+      const result = await confirmMultiSigTransaction(address, txId);
+      console.log('트랜잭션 승인 완료:', result);
+      
       alert('트랜잭션이 승인되었습니다!');
+      
+      // 트랜잭션 목록 새로고침
+      const txList = await getMultiSigWalletTransactions(address);
+      setTransactions(txList);
     } catch (error) {
       console.error('승인 실패:', error);
-      alert('승인에 실패했습니다.');
+      alert('승인에 실패했습니다: ' + error.message);
     }
   };
 
@@ -69,12 +101,19 @@ const MultiSigTransactionsPage = () => {
    */
   const handleExecuteTransaction = async (txId) => {
     try {
-      // TODO: 실제 실행 로직
-      console.log('트랜잭션 실행:', txId);
+      console.log('트랜잭션 실행 시작:', txId);
+      
+      const result = await executeMultiSigTransaction(address, txId);
+      console.log('트랜잭션 실행 완료:', result);
+      
       alert('트랜잭션이 실행되었습니다!');
+      
+      // 트랜잭션 목록 새로고침
+      const txList = await getMultiSigWalletTransactions(address);
+      setTransactions(txList);
     } catch (error) {
       console.error('실행 실패:', error);
-      alert('실행에 실패했습니다.');
+      alert('실행에 실패했습니다: ' + error.message);
     }
   };
 
@@ -124,6 +163,41 @@ const MultiSigTransactionsPage = () => {
     return tx.status === 'pending' && tx.confirmations >= tx.threshold;
   };
 
+  // 로딩 상태
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <div className="text-center text-gray-500">다중서명 지갑 정보를 불러오는 중...</div>
+      </div>
+    );
+  }
+
+  // 오류 상태
+  if (walletError) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+          {walletError}
+        </div>
+        <button
+          onClick={() => navigate('/multisig')}
+          className="mt-4 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+        >
+          돌아가기
+        </button>
+      </div>
+    );
+  }
+
+  // 다중서명 지갑이 로드되지 않은 경우
+  if (!multisigWallet) {
+    return (
+      <div className="p-6">
+        <div className="text-center text-gray-500">다중서명 지갑 정보를 불러올 수 없습니다.</div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       {/* 페이지 헤더 */}
@@ -132,9 +206,12 @@ const MultiSigTransactionsPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">트랜잭션 내역</h1>
             <p className="text-gray-600 mt-1">대기 중인 트랜잭션을 승인하고 실행하세요</p>
+            <p className="text-sm text-gray-500 mt-1">
+              다중서명 지갑: {multisigWallet.address}
+            </p>
           </div>
           <button
-            onClick={() => navigate('/multisig/send')}
+            onClick={() => navigate(`/multisig/${address}/send`)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
             새 트랜잭션 제안
@@ -274,7 +351,7 @@ const MultiSigTransactionsPage = () => {
           <h3 className="text-lg font-medium text-gray-900 mb-2">트랜잭션이 없습니다</h3>
           <p className="text-gray-500 mb-4">아직 제안된 트랜잭션이 없습니다.</p>
           <button
-            onClick={() => navigate('/multisig/send')}
+            onClick={() => navigate(`/multisig/${address}/send`)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
             첫 트랜잭션 제안하기

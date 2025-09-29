@@ -43,10 +43,6 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
         _;
     }
     
-    modifier onlyWallet() {
-        require(msg.sender == address(this), "Only the wallet itself can call this");
-        _;
-    }
 
     modifier txExists(uint txIndex) {
         require(txIndex < transactions.length, "Transaction does not exist");
@@ -125,20 +121,28 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
         emit TransactionRevoked(txIndex, msg.sender);
     }
 
-    // --- Owner Management Functions (Only callable by the wallet itself via proposals) ---
+    // --- Owner Management Functions (Only callable by owners via proposals) ---
 
-    function addOwner(address newOwner) public onlyWallet {
+    function addOwner(address newOwner) public onlyOwner {
         require(newOwner != address(0), "Invalid address");
         require(!isOwner[newOwner], "Already an owner");
 
         isOwner[newOwner] = true;
         ownerToIndex[newOwner] = owners.length;
         owners.push(newOwner);
+        
+        // 임계값이 소유자 수보다 크면 자동으로 조정
+        if (threshold > owners.length) {
+            threshold = owners.length;
+            emit ThresholdChanged(threshold);
+        }
+        
         emit OwnerAdded(newOwner);
     }
 
-    function removeOwner(address ownerToRemove) public onlyWallet {
+    function removeOwner(address ownerToRemove) public onlyOwner {
         require(isOwner[ownerToRemove], "Not an owner");
+        require(owners.length > 1, "Cannot remove the last owner");
 
         isOwner[ownerToRemove] = false;
         
@@ -159,8 +163,9 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
         emit OwnerRemoved(ownerToRemove);
     }
     
-    function changeThreshold(uint newThreshold) public onlyWallet {
+    function changeThreshold(uint newThreshold) public onlyOwner {
         require(newThreshold > 0 && newThreshold <= owners.length, "Invalid new threshold");
+        require(newThreshold != threshold, "New threshold must be different from current threshold");
         threshold = newThreshold;
         emit ThresholdChanged(newThreshold);
     }
@@ -170,13 +175,14 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
     function _executeTransaction(uint txIndex) internal nonReentrant {
         Transaction storage txn = transactions[txIndex];
         
-        txn.executed = true;
-
         (bool success, ) = txn.to.call{value: txn.value}(txn.data);
 
         if (success) {
+            txn.executed = true;
             emit TransactionExecuted(txIndex);
         } else {
+            // 실행 실패 시 executed 상태를 false로 유지하여 재시도 가능
+            // confirmCount는 그대로 유지하여 다시 임계값에 도달하면 재실행 시도
             emit TransactionFailed(txIndex);
         }
     }
@@ -189,6 +195,18 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
     function getTransaction(uint txIndex) public view returns (address to, uint value, bytes memory data, bool executed, uint confirmCount) {
         Transaction storage txn = transactions[txIndex];
         return (txn.to, txn.value, txn.data, txn.executed, txn.confirmCount);
+    }
+
+    function getTransactionCount() public view returns (uint) {
+        return transactions.length;
+    }
+
+    function isConfirmed(uint txIndex, address owner) public view returns (bool) {
+        return confirmations[txIndex][owner];
+    }
+
+    function getConfirmationCount(uint txIndex) public view returns (uint) {
+        return transactions[txIndex].confirmCount;
     }
 }
 

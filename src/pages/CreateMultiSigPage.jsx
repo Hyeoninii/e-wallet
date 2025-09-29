@@ -126,17 +126,17 @@ const CreateMultiSigPage = () => {
       console.log('result.address:', result.address);
       console.log('result.pending:', result.pending);
       
-      if (result.address && result.address.startsWith('0x') && !result.address.includes('트랜잭션 확인 중')) {
+      if (result.address && result.address.startsWith('0x') && !result.pending) {
         // 실제 컨트랙트 주소인 경우
         console.log('실제 주소로 대시보드 이동:', result.address);
         alert(`다중 서명 지갑이 성공적으로 생성되었습니다!\n주소: ${result.address}`);
         navigate(`/multisig/${result.address}`);
       } else {
-        // 배포가 아직 확인되지 않은 경우 - 트랜잭션 해시를 주소로 사용
-        console.log('배포 대기 중 - 트랜잭션 해시를 주소로 사용');
-        const tempAddress = result.deploymentTx; // 트랜잭션 해시를 임시 주소로 사용
-        alert(`다중 서명 지갑 배포 트랜잭션이 제출되었습니다!\n\n트랜잭션 해시: ${result.deploymentTx}\n\n대시보드로 이동합니다.`);
-        navigate(`/multisig/${tempAddress}`);
+        // 배포가 아직 확인되지 않은 경우 - 대시보드로 이동
+        console.log('배포 대기 중 - 대시보드로 이동하여 상태 확인');
+        alert(`다중 서명 지갑 배포 트랜잭션이 제출되었습니다!\n\n트랜잭션 해시: ${result.deploymentTx}\n\n대시보드에서 배포 상태를 확인할 수 있습니다.`);
+        // 대시보드로 이동하여 사용자가 배포 상태를 확인할 수 있도록 함
+        navigate('/');
       }
       
     } catch (error) {

@@ -14,8 +14,15 @@ const DashboardPage = () => {
     isReadOnly, 
     error, 
     clearError,
-    savedMultiSigWallets
+    savedMultiSigWallets,
+    loadSavedMultiSigWallets
   } = useWallet();
+
+  // 다중서명 지갑 목록 디버깅
+  useEffect(() => {
+    console.log('DashboardPage - savedMultiSigWallets 변경됨:', savedMultiSigWallets);
+    console.log('DashboardPage - 다중서명 지갑 개수:', savedMultiSigWallets.length);
+  }, [savedMultiSigWallets]);
 
   // 상태 관리
   const [balance, setBalance] = useState('0');
@@ -243,12 +250,79 @@ const DashboardPage = () => {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">다중 서명 지갑</h3>
-            <button 
-              onClick={() => window.location.href = '/multisig/create'}
-              className="bg-purple-600 text-white px-3 py-1 rounded-md text-sm font-medium hover:bg-purple-700 transition-colors"
-            >
-              + 생성
-            </button>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => {
+                  loadSavedMultiSigWallets();
+                  alert('다중 서명 지갑 목록을 새로고침했습니다.');
+                }}
+                className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors"
+                title="목록 새로고침"
+              >
+                🔄
+              </button>
+              <button 
+                onClick={async () => {
+                  const address = prompt('배포된 다중서명 지갑 주소를 입력하세요:');
+                  if (address && address.startsWith('0x')) {
+                    try {
+                      console.log('수동으로 다중서명 지갑 추가 시작:', address);
+                      
+                      // 컨트랙트에서 실제 정보 조회 시도
+                      let contractInfo = null;
+                      try {
+                        const { getMultiSigWalletData } = await import('../contexts/WalletContext');
+                        contractInfo = await getMultiSigWalletData(address);
+                        console.log('컨트랙트에서 조회된 정보:', contractInfo);
+                      } catch (contractError) {
+                        console.warn('컨트랙트 정보 조회 실패, 기본값 사용:', contractError);
+                      }
+                      
+                      // 수동으로 다중서명 지갑 추가
+                      const manualWallet = {
+                        name: '수동 추가된 지갑',
+                        address: address,
+                        owners: contractInfo?.owners || [],
+                        threshold: contractInfo?.threshold || 0,
+                        deploymentTx: '',
+                        createdAt: new Date().toISOString(),
+                        type: 'multisig',
+                        pending: false
+                      };
+                      
+                      console.log('추가할 지갑 정보:', manualWallet);
+                      
+                      // 현재 저장된 목록에 추가
+                      const currentWallets = JSON.parse(localStorage.getItem('savedMultiSigWallets') || '[]');
+                      console.log('현재 저장된 지갑 목록:', currentWallets);
+                      
+                      currentWallets.push(manualWallet);
+                      console.log('업데이트된 지갑 목록:', currentWallets);
+                      
+                      localStorage.setItem('savedMultiSigWallets', JSON.stringify(currentWallets));
+                      console.log('로컬 스토리지에 저장 완료');
+                      
+                      // 상태 새로고침
+                      loadSavedMultiSigWallets();
+                      alert('다중서명 지갑이 추가되었습니다!');
+                    } catch (error) {
+                      console.error('수동 추가 실패:', error);
+                      alert('지갑 추가에 실패했습니다: ' + error.message);
+                    }
+                  }
+                }}
+                className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-sm font-medium hover:bg-blue-200 transition-colors"
+                title="수동으로 지갑 추가"
+              >
+                + 수동추가
+              </button>
+              <button 
+                onClick={() => window.location.href = '/multisig/create'}
+                className="bg-purple-600 text-white px-3 py-1 rounded-md text-sm font-medium hover:bg-purple-700 transition-colors"
+              >
+                + 생성
+              </button>
+            </div>
           </div>
           
           {savedMultiSigWallets.length > 0 ? (
@@ -258,16 +332,26 @@ const DashboardPage = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium text-gray-900">{wallet.name}</h4>
-                      <p className="text-sm text-gray-500 font-mono">{wallet.address}</p>
+                      <p className="text-sm text-gray-500 font-mono">
+                        {wallet.address || '배포 대기 중...'}
+                      </p>
                       <p className="text-xs text-gray-400">
-                        소유자 {wallet.owners.length}명, 임계값 {wallet.threshold}
+                        {wallet.pending ? (
+                          <span className="text-yellow-600">배포 대기 중</span>
+                        ) : (
+                          `소유자 ${wallet.owners.length}명, 임계값 ${wallet.threshold}`
+                        )}
                       </p>
                     </div>
                     <button 
-                      onClick={() => window.location.href = `/multisig/${wallet.address}`}
-                      className="bg-purple-100 text-purple-700 px-3 py-1 rounded-md text-sm font-medium hover:bg-purple-200 transition-colors"
+                      onClick={() => window.location.href = `/multisig/${wallet.address || wallet.deploymentTx}`}
+                      className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                        wallet.pending 
+                          ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' 
+                          : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                      }`}
                     >
-                      열기
+                      {wallet.pending ? '대기 중' : '열기'}
                     </button>
                   </div>
                 </div>
