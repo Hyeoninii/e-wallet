@@ -13,6 +13,7 @@ const MultiSigDashboardPage = () => {
 
   const [multisigWallet, setMultisigWallet] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [recentTransactions, setRecentTransactions] = useState([]);
@@ -173,6 +174,93 @@ const MultiSigDashboardPage = () => {
     }
   };
 
+  /**
+   * 공유 링크 생성
+   */
+  const generateShareLink = () => {
+    const baseUrl = window.location.origin;
+    const shareUrl = `${baseUrl}/multisig/${multisigWallet.address}/join`;
+    return shareUrl;
+  };
+
+  /**
+   * 공유 링크 복사
+   */
+  const handleCopyShareLink = async () => {
+    try {
+      const shareLink = generateShareLink();
+      await navigator.clipboard.writeText(shareLink);
+      alert('공유 링크가 복사되었습니다!\n\n다른 서명자들에게 이 링크를 공유하세요.');
+    } catch (error) {
+      console.error('공유 링크 복사 실패:', error);
+    }
+  };
+
+
+  /**
+   * 잔액만 새로고침
+   */
+  const handleRefreshBalance = async () => {
+    try {
+      setIsLoadingBalance(true);
+
+      if (!address || !provider) {
+        return;
+      }
+
+      // 잔액만 조회
+      const balance = await provider.getBalance(address);
+      const balanceInEth = ethers.formatEther(balance);
+      
+      setMultisigWallet(prev => ({
+        ...prev,
+        balance: balanceInEth
+      }));
+
+      console.log('잔액 새로고침 완료:', balanceInEth);
+    } catch (error) {
+      console.error('잔액 새로고침 실패:', error);
+    } finally {
+      setIsLoadingBalance(false);
+    }
+  };
+
+  /**
+   * 지갑 정보 새로고침
+   */
+  const handleRefreshWallet = async () => {
+    try {
+      setIsLoading(true);
+      setLoadError(null);
+
+      if (!address || !provider) {
+        return;
+      }
+
+      // 현재 지갑 정보 다시 로드
+      const contractInfo = await getMultiSigWalletData(address);
+      
+      setMultisigWallet(prev => ({
+        ...prev,
+        owners: contractInfo.owners,
+        threshold: Number(contractInfo.threshold),
+        balance: contractInfo.balance
+      }));
+
+      // 현재 사용자 재확인
+      if (currentWallet && contractInfo.owners.includes(currentWallet.address)) {
+        setCurrentUser(currentWallet.address);
+      }
+
+      console.log('지갑 정보 새로고침 완료');
+    } catch (error) {
+      console.error('지갑 정보 새로고침 실패:', error);
+      setLoadError('지갑 정보 새로고침에 실패했습니다: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {isLoading && (
@@ -212,16 +300,33 @@ const MultiSigDashboardPage = () => {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">잔액</h2>
-          <button className="p-2 text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button
+            onClick={handleRefreshBalance}
+            disabled={isLoadingBalance}
+            className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+            title="잔액 새로고침"
+          >
+            <svg className={`w-5 h-5 ${isLoadingBalance ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
         </div>
         
         <div className="flex items-baseline space-x-2">
-          <span className="text-3xl font-bold text-gray-900">
-            {parseFloat(multisigWallet.balance).toFixed(6)}
+          <span className={`text-3xl font-bold transition-colors duration-200 ${
+            isLoadingBalance ? 'text-gray-400' : 'text-gray-900'
+          }`}>
+            {isLoadingBalance ? (
+              <span className="flex items-center">
+                <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                새로고침 중...
+              </span>
+            ) : (
+              parseFloat(multisigWallet.balance).toFixed(6)
+            )}
           </span>
           <span className="text-lg text-gray-500">ETH</span>
         </div>
@@ -263,6 +368,25 @@ const MultiSigDashboardPage = () => {
               </span>
             </div>
           </div>
+
+          {/* 공유 링크 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">서명자 초대</label>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleCopyShareLink}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                </svg>
+                <span>공유 링크 복사</span>
+              </button>
+              <span className="text-sm text-gray-500">
+                다른 서명자들을 초대하려면 이 링크를 공유하세요
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -270,12 +394,14 @@ const MultiSigDashboardPage = () => {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">소유자 목록</h2>
-          <button
-            onClick={() => navigate(`/multisig/${address}/members`)}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-          >
-            관리
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => navigate(`/multisig/${address}/members`)}
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              관리
+            </button>
+          </div>
         </div>
         
         <div className="space-y-3">
@@ -305,6 +431,7 @@ const MultiSigDashboardPage = () => {
           ))}
         </div>
       </div>
+
 
       {/* 빠른 액션 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

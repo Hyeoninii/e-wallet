@@ -671,6 +671,125 @@ export const WalletProvider = ({ children }) => {
   };
 
   /**
+   * 서명자 인증 (다중서명 지갑의 서명자인지 확인)
+   * @param {string} multisigAddress - 다중서명 지갑 주소
+   * @param {string} signerAddress - 확인할 서명자 주소
+   * @returns {Object} 인증 결과
+   */
+  const verifySigner = async (multisigAddress, signerAddress) => {
+    try {
+      console.log('서명자 인증 시작:', { multisigAddress, signerAddress });
+      
+      if (!provider) {
+        throw new Error('네트워크에 연결되지 않았습니다.');
+      }
+
+      if (!ethers.isAddress(multisigAddress)) {
+        throw new Error('유효하지 않은 다중서명 지갑 주소입니다.');
+      }
+
+      if (!ethers.isAddress(signerAddress)) {
+        throw new Error('유효하지 않은 서명자 주소입니다.');
+      }
+
+      // 컨트랙트에서 소유자 목록 조회
+      const contract = getMultiSigWallet(provider, multisigAddress);
+      const owners = await contract.getOwners();
+      
+      // 서명자가 소유자 목록에 있는지 확인
+      const isSigner = owners.some(owner => 
+        owner.toLowerCase() === signerAddress.toLowerCase()
+      );
+
+      console.log('서명자 인증 결과:', {
+        multisigAddress,
+        signerAddress,
+        owners,
+        isSigner
+      });
+
+      return {
+        isSigner,
+        owners,
+        multisigAddress,
+        signerAddress
+      };
+    } catch (error) {
+      console.error('서명자 인증 실패:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * 다중서명 지갑에 서명자 참여 (주소로 접근)
+   * @param {string} multisigAddress - 다중서명 지갑 주소
+   * @returns {Object} 참여 결과
+   */
+  const joinMultiSigWallet = async (multisigAddress) => {
+    try {
+      console.log('다중서명 지갑 참여 시작:', multisigAddress);
+      
+      if (!currentWallet) {
+        throw new Error('지갑이 연결되지 않았습니다.');
+      }
+
+      if (!provider) {
+        throw new Error('네트워크에 연결되지 않았습니다.');
+      }
+
+      if (!ethers.isAddress(multisigAddress)) {
+        throw new Error('유효하지 않은 다중서명 지갑 주소입니다.');
+      }
+
+      // 서명자 인증
+      const verification = await verifySigner(multisigAddress, currentWallet.address);
+      
+      if (!verification.isSigner) {
+        throw new Error('이 지갑은 해당 다중서명 지갑의 서명자가 아닙니다.');
+      }
+
+      // 다중서명 지갑 정보 조회
+      const walletData = await getMultiSigWalletData(multisigAddress);
+      
+      // 로컬 스토리지에 다중서명 지갑 추가 (이미 있는지 확인)
+      const existingWallets = loadWalletData('savedMultiSigWallets') || [];
+      const isAlreadyAdded = existingWallets.some(wallet => 
+        wallet.address?.toLowerCase() === multisigAddress.toLowerCase()
+      );
+
+      if (!isAlreadyAdded) {
+        const newMultiSigWallet = {
+          name: `다중서명 지갑 ${multisigAddress.slice(0, 6)}...${multisigAddress.slice(-4)}`,
+          address: multisigAddress,
+          owners: walletData.owners,
+          threshold: Number(walletData.threshold),
+          balance: walletData.balance,
+          deploymentTx: '',
+          createdAt: new Date().toISOString(),
+          type: 'multisig',
+          pending: false,
+          joinedAt: new Date().toISOString()
+        };
+
+        const updatedWallets = [...existingWallets, newMultiSigWallet];
+        setSavedMultiSigWallets(updatedWallets);
+        saveWalletData('savedMultiSigWallets', updatedWallets);
+        
+        console.log('다중서명 지갑 참여 완료:', newMultiSigWallet);
+        return newMultiSigWallet;
+      } else {
+        console.log('이미 참여한 다중서명 지갑입니다.');
+        return existingWallets.find(wallet => 
+          wallet.address?.toLowerCase() === multisigAddress.toLowerCase()
+        );
+      }
+    } catch (error) {
+      console.error('다중서명 지갑 참여 실패:', error);
+      throw error;
+    }
+  };
+
+  /**
    * 에러 초기화
    */
   const clearError = () => {
@@ -708,6 +827,10 @@ export const WalletProvider = ({ children }) => {
     proposeMultiSigTransaction,
     confirmMultiSigTransaction,
     executeMultiSigTransaction,
+    
+    // 서명자 참여 액션
+    verifySigner,
+    joinMultiSigWallet,
     
     // 유틸리티
     isConnected: !!currentWallet,

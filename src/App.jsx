@@ -19,6 +19,7 @@ import SettingsPage from './pages/SettingsPage';
 // 다중 서명 페이지들
 import CreateMultiSigPage from './pages/CreateMultiSigPage';
 import MultiSigDashboardPage from './pages/MultiSigDashboardPage';
+import MultiSigJoinPage from './pages/MultiSigJoinPage';
 import MultiSigSendPage from './pages/MultiSigSendPage';
 import MultiSigTransactionsPage from './pages/MultiSigTransactionsPage';
 import MultiSigMembersPage from './pages/MultiSigMembersPage';
@@ -48,6 +49,7 @@ function App() {
           
           {/* 다중 서명 페이지들 */}
           <Route path="/multisig/create" element={<CreateMultiSigPage />} />
+          <Route path="/multisig/:address/join" element={<MultiSigJoinPage />} />
           <Route path="/multisig/:address" element={<MultiSigDashboardPage />} />
           <Route path="/multisig/:address/send" element={<MultiSigSendPage />} />
           <Route path="/multisig/:address/transactions" element={<MultiSigTransactionsPage />} />

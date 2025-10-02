@@ -133,8 +133,20 @@ const DashboardPage = () => {
         </div>
         
         <div className="flex items-baseline space-x-2">
-          <span className="text-3xl font-bold text-gray-900">
-            {isLoadingBalance ? '로딩 중...' : parseFloat(balance).toFixed(6)}
+          <span className={`text-3xl font-bold transition-colors duration-200 ${
+            isLoadingBalance ? 'text-gray-400' : 'text-gray-900'
+          }`}>
+            {isLoadingBalance ? (
+              <span className="flex items-center">
+                <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                새로고침 중...
+              </span>
+            ) : (
+              parseFloat(balance).toFixed(6)
+            )}
           </span>
           <span className="text-lg text-gray-500">ETH</span>
         </div>
@@ -254,67 +266,13 @@ const DashboardPage = () => {
               <button 
                 onClick={() => {
                   loadSavedMultiSigWallets();
-                  alert('다중 서명 지갑 목록을 새로고침했습니다.');
                 }}
-                className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors"
+                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
                 title="목록 새로고침"
               >
-                🔄
-              </button>
-              <button 
-                onClick={async () => {
-                  const address = prompt('배포된 다중서명 지갑 주소를 입력하세요:');
-                  if (address && address.startsWith('0x')) {
-                    try {
-                      console.log('수동으로 다중서명 지갑 추가 시작:', address);
-                      
-                      // 컨트랙트에서 실제 정보 조회 시도
-                      let contractInfo = null;
-                      try {
-                        const { getMultiSigWalletData } = await import('../contexts/WalletContext');
-                        contractInfo = await getMultiSigWalletData(address);
-                        console.log('컨트랙트에서 조회된 정보:', contractInfo);
-                      } catch (contractError) {
-                        console.warn('컨트랙트 정보 조회 실패, 기본값 사용:', contractError);
-                      }
-                      
-                      // 수동으로 다중서명 지갑 추가
-                      const manualWallet = {
-                        name: '수동 추가된 지갑',
-                        address: address,
-                        owners: contractInfo?.owners || [],
-                        threshold: contractInfo?.threshold || 0,
-                        deploymentTx: '',
-                        createdAt: new Date().toISOString(),
-                        type: 'multisig',
-                        pending: false
-                      };
-                      
-                      console.log('추가할 지갑 정보:', manualWallet);
-                      
-                      // 현재 저장된 목록에 추가
-                      const currentWallets = JSON.parse(localStorage.getItem('savedMultiSigWallets') || '[]');
-                      console.log('현재 저장된 지갑 목록:', currentWallets);
-                      
-                      currentWallets.push(manualWallet);
-                      console.log('업데이트된 지갑 목록:', currentWallets);
-                      
-                      localStorage.setItem('savedMultiSigWallets', JSON.stringify(currentWallets));
-                      console.log('로컬 스토리지에 저장 완료');
-                      
-                      // 상태 새로고침
-                      loadSavedMultiSigWallets();
-                      alert('다중서명 지갑이 추가되었습니다!');
-                    } catch (error) {
-                      console.error('수동 추가 실패:', error);
-                      alert('지갑 추가에 실패했습니다: ' + error.message);
-                    }
-                  }
-                }}
-                className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-sm font-medium hover:bg-blue-200 transition-colors"
-                title="수동으로 지갑 추가"
-              >
-                + 수동추가
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
               </button>
               <button 
                 onClick={() => window.location.href = '/multisig/create'}
