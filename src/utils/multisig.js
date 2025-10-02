@@ -303,10 +303,22 @@ export const getMultiSigWalletInfo = async (contract) => {
     
     try {
       console.log('getOwners() 호출 중...');
+      console.log('contract 정보:', {
+        target: contract.target,
+        provider: contract.provider,
+        hasGetOwners: typeof contract.getOwners === 'function'
+      });
+      
       owners = await contract.getOwners();
       console.log('getOwners() 성공:', owners);
+      console.log('owners 타입:', typeof owners, '길이:', owners?.length);
     } catch (ownersError) {
-      console.warn('getOwners() 실패, 기본값 사용:', ownersError.message);
+      console.error('getOwners() 실패:', ownersError);
+      console.error('에러 상세:', {
+        message: ownersError.message,
+        code: ownersError.code,
+        reason: ownersError.reason
+      });
       owners = [];
     }
     

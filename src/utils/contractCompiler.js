@@ -5,6 +5,8 @@
  * 이 파일은 개발 및 테스트 목적으로만 사용됩니다.
  */
 
+import { MULTISIG_WALLET_BYTECODE } from './bytecode.js';
+
 /**
  * MultiSigWallet 컨트랙트의 컴파일된 바이트코드
  * 
@@ -16,14 +18,20 @@
  * 현재는 빈 바이트코드를 반환합니다.
  */
 export const getMultiSigWalletBytecode = () => {
-  // 실제 프로덕션에서는 컴파일된 바이트코드를 여기에 넣어야 합니다.
-  // 예시: "0x608060405234801561001057600080fd5b50..."
+  // 별도 파일에서 바이트코드 가져오기
+  console.log('=== 바이트코드 디버깅 ===');
+  console.log('MULTISIG_WALLET_BYTECODE:', MULTISIG_WALLET_BYTECODE);
+  console.log('바이트코드 길이:', MULTISIG_WALLET_BYTECODE.length);
+  console.log('바이트코드 타입:', typeof MULTISIG_WALLET_BYTECODE);
+  console.log('바이트코드 시작:', MULTISIG_WALLET_BYTECODE.substring(0, 20));
+  console.log('=== 디버깅 끝 ===');
   
-  console.warn('⚠️  실제 컨트랙트 바이트코드가 설정되지 않았습니다.');
-  console.warn('   Hardhat이나 Remix를 사용하여 컨트랙트를 컴파일하고 바이트코드를 업데이트하세요.');
+  if (MULTISIG_WALLET_BYTECODE === '0x' || MULTISIG_WALLET_BYTECODE.length < 10) {
+    console.warn('⚠️  실제 컨트랙트 바이트코드가 설정되지 않았습니다.');
+    console.warn('   src/utils/bytecode.js 파일에서 MULTISIG_WALLET_BYTECODE를 업데이트하세요.');
+  }
   
-  // 빈 바이트코드 반환 (실제 배포 불가)
-  return '0x';
+  return MULTISIG_WALLET_BYTECODE;
 };
 
 /**
