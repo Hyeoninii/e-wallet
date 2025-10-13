@@ -19,9 +19,11 @@ import SettingsPage from './pages/SettingsPage';
 // 다중 서명 페이지들
 import CreateMultiSigPage from './pages/CreateMultiSigPage';
 import MultiSigDashboardPage from './pages/MultiSigDashboardPage';
+import MultiSigJoinPage from './pages/MultiSigJoinPage';
 import MultiSigSendPage from './pages/MultiSigSendPage';
 import MultiSigTransactionsPage from './pages/MultiSigTransactionsPage';
 import MultiSigMembersPage from './pages/MultiSigMembersPage';
+import MultiSigSettingsPage from './pages/MultiSigSettingsPage';
 
 /**
  * 메인 App 컴포넌트
@@ -47,10 +49,12 @@ function App() {
           
           {/* 다중 서명 페이지들 */}
           <Route path="/multisig/create" element={<CreateMultiSigPage />} />
-          <Route path="/multisig" element={<MultiSigDashboardPage />} />
-          <Route path="/multisig/send" element={<MultiSigSendPage />} />
-          <Route path="/multisig/transactions" element={<MultiSigTransactionsPage />} />
-          <Route path="/multisig/members" element={<MultiSigMembersPage />} />
+          <Route path="/multisig/:address/join" element={<MultiSigJoinPage />} />
+          <Route path="/multisig/:address" element={<MultiSigDashboardPage />} />
+          <Route path="/multisig/:address/send" element={<MultiSigSendPage />} />
+          <Route path="/multisig/:address/transactions" element={<MultiSigTransactionsPage />} />
+          <Route path="/multisig/:address/members" element={<MultiSigMembersPage />} />
+          <Route path="/multisig/:address/settings" element={<MultiSigSettingsPage />} />
         </Routes>
       </Layout>
     </WalletProvider>

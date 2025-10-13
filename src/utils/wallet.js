@@ -7,9 +7,10 @@ import { ethers } from 'ethers';
  */
 export const saveWalletData = (key, data) => {
   try {
-    // 민감한 정보는 암호화하여 저장 (실제 프로덕션에서는 더 강력한 암호화 사용)
-    const encryptedData = btoa(JSON.stringify(data));
-    localStorage.setItem(key, encryptedData);
+    // UTF-8 문자를 안전하게 인코딩
+    const jsonString = JSON.stringify(data);
+    const encodedData = btoa(encodeURIComponent(jsonString));
+    localStorage.setItem(key, encodedData);
     return true;
   } catch (error) {
     console.error('지갑 데이터 저장 실패:', error);
@@ -24,10 +25,11 @@ export const saveWalletData = (key, data) => {
  */
 export const loadWalletData = (key) => {
   try {
-    const encryptedData = localStorage.getItem(key);
-    if (!encryptedData) return null;
+    const encodedData = localStorage.getItem(key);
+    if (!encodedData) return null;
     
-    const decryptedData = JSON.parse(atob(encryptedData));
+    const jsonString = decodeURIComponent(atob(encodedData));
+    const decryptedData = JSON.parse(jsonString);
     return decryptedData;
   } catch (error) {
     console.error('지갑 데이터 불러오기 실패:', error);

@@ -13,8 +13,16 @@ const DashboardPage = () => {
     provider, 
     isReadOnly, 
     error, 
-    clearError 
+    clearError,
+    savedMultiSigWallets,
+    loadSavedMultiSigWallets
   } = useWallet();
+
+  // 다중서명 지갑 목록 디버깅
+  useEffect(() => {
+    console.log('DashboardPage - savedMultiSigWallets 변경됨:', savedMultiSigWallets);
+    console.log('DashboardPage - 다중서명 지갑 개수:', savedMultiSigWallets.length);
+  }, [savedMultiSigWallets]);
 
   // 상태 관리
   const [balance, setBalance] = useState('0');
@@ -125,8 +133,20 @@ const DashboardPage = () => {
         </div>
         
         <div className="flex items-baseline space-x-2">
-          <span className="text-3xl font-bold text-gray-900">
-            {isLoadingBalance ? '로딩 중...' : parseFloat(balance).toFixed(6)}
+          <span className={`text-3xl font-bold transition-colors duration-200 ${
+            isLoadingBalance ? 'text-gray-400' : 'text-gray-900'
+          }`}>
+            {isLoadingBalance ? (
+              <span className="flex items-center">
+                <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                새로고침 중...
+              </span>
+            ) : (
+              parseFloat(balance).toFixed(6)
+            )}
           </span>
           <span className="text-lg text-gray-500">ETH</span>
         </div>
@@ -238,6 +258,79 @@ const DashboardPage = () => {
           </div>
         )}
         
+        {/* 다중 서명 지갑 섹션 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">다중 서명 지갑</h3>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => {
+                  loadSavedMultiSigWallets();
+                }}
+                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                title="목록 새로고침"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+              <button 
+                onClick={() => window.location.href = '/multisig/create'}
+                className="bg-purple-600 text-white px-3 py-1 rounded-md text-sm font-medium hover:bg-purple-700 transition-colors"
+              >
+                + 생성
+              </button>
+            </div>
+          </div>
+          
+          {savedMultiSigWallets.length > 0 ? (
+            <div className="space-y-3">
+              {savedMultiSigWallets.map((wallet, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">{wallet.name}</h4>
+                      <p className="text-sm text-gray-500 font-mono">
+                        {wallet.address || '배포 대기 중...'}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {wallet.pending ? (
+                          <span className="text-yellow-600">배포 대기 중</span>
+                        ) : (
+                          `소유자 ${wallet.owners.length}명, 임계값 ${wallet.threshold}`
+                        )}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => window.location.href = `/multisig/${wallet.address || wallet.deploymentTx}`}
+                      className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                        wallet.pending 
+                          ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' 
+                          : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                      }`}
+                    >
+                      {wallet.pending ? '대기 중' : '열기'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+              </svg>
+              <p className="text-sm">아직 다중 서명 지갑이 없습니다</p>
+              <button 
+                onClick={() => window.location.href = '/multisig/create'}
+                className="mt-2 text-purple-600 hover:text-purple-700 text-sm font-medium"
+              >
+                첫 번째 다중 서명 지갑 생성하기
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">최근 활동</h3>
           <div className="text-center py-8 text-gray-500">
