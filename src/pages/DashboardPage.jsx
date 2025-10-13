@@ -109,10 +109,15 @@ const DashboardPage = () => {
       )}
 
       {/* 환영 메시지 */}
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-6 text-white">
+      <div className={`rounded-lg p-6 text-white ${
+        currentWallet.type === 'multisig' 
+          ? 'bg-gradient-to-r from-purple-500 to-purple-600' 
+          : 'bg-gradient-to-r from-blue-500 to-blue-600'
+      }`}>
         <h1 className="text-2xl font-bold mb-2">안녕하세요, {currentWallet.name}님!</h1>
         <p className="text-blue-100">
-          {isReadOnly ? '읽기 전용 모드로 연결되었습니다.' : '개인 지갑에 연결되었습니다.'}
+          {isReadOnly ? '읽기 전용 모드로 연결되었습니다.' : 
+           currentWallet.type === 'multisig' ? '다중 서명 지갑에 연결되었습니다.' : '개인 지갑에 연결되었습니다.'}
         </p>
       </div>
 
@@ -193,11 +198,19 @@ const DashboardPage = () => {
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                 isReadOnly 
                   ? 'bg-yellow-100 text-yellow-800' 
+                  : currentWallet.type === 'multisig'
+                  ? 'bg-purple-100 text-purple-800'
                   : 'bg-green-100 text-green-800'
               }`}>
-                {isReadOnly ? '읽기 전용' : '개인 지갑'}
+                {isReadOnly ? '읽기 전용' : 
+                 currentWallet.type === 'multisig' ? '다중 서명 지갑' : '개인 지갑'}
               </span>
-              {currentWallet.type && (
+              {currentWallet.type === 'multisig' && (
+                <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
+                  {currentWallet.threshold}/{currentWallet.owners?.length || 0} 서명 필요
+                </span>
+              )}
+              {currentWallet.type && currentWallet.type !== 'multisig' && (
                 <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
                   {currentWallet.type === 'hd' ? 'HD 지갑' : '개인키 지갑'}
                 </span>
@@ -242,24 +255,82 @@ const DashboardPage = () => {
         </div>
       )}
 
+      {/* 다중 서명 지갑 정보 (다중 서명 지갑인 경우) */}
+      {currentWallet.type === 'multisig' && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">다중 서명 정보</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">소유자 목록</label>
+              <div className="space-y-2">
+                {currentWallet.owners?.map((owner, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-medium">
+                      {index + 1}
+                    </span>
+                    <code className="flex-1 p-2 bg-gray-50 rounded text-sm font-mono border border-gray-200">
+                      {owner}
+                    </code>
+                  </div>
+                )) || (
+                  <p className="text-gray-500 text-sm">소유자 정보를 불러오는 중...</p>
+                )}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">총 소유자</label>
+                <span className="text-lg font-semibold text-gray-900">
+                  {currentWallet.owners?.length || 0}명
+                </span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">필요 서명</label>
+                <span className="text-lg font-semibold text-gray-900">
+                  {currentWallet.threshold || 0}개
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 빠른 액션 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {!isReadOnly && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">빠른 액션</h3>
             <div className="space-y-3">
-              <button className="w-full bg-blue-600 text-white rounded-lg px-4 py-3 text-sm font-medium hover:bg-blue-700 transition-colors">
-                송금하기
-              </button>
-              <button className="w-full bg-gray-100 text-gray-700 rounded-lg px-4 py-3 text-sm font-medium hover:bg-gray-200 transition-colors">
-                받기 주소 공유
-              </button>
+              {currentWallet.type === 'multisig' ? (
+                <>
+                  <button className="w-full bg-purple-600 text-white rounded-lg px-4 py-3 text-sm font-medium hover:bg-purple-700 transition-colors">
+                    다중 서명 송금
+                  </button>
+                  <button className="w-full bg-gray-100 text-gray-700 rounded-lg px-4 py-3 text-sm font-medium hover:bg-gray-200 transition-colors">
+                    트랜잭션 관리
+                  </button>
+                  <button className="w-full bg-gray-100 text-gray-700 rounded-lg px-4 py-3 text-sm font-medium hover:bg-gray-200 transition-colors">
+                    멤버 관리
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="w-full bg-blue-600 text-white rounded-lg px-4 py-3 text-sm font-medium hover:bg-blue-700 transition-colors">
+                    송금하기
+                  </button>
+                  <button className="w-full bg-gray-100 text-gray-700 rounded-lg px-4 py-3 text-sm font-medium hover:bg-gray-200 transition-colors">
+                    받기 주소 공유
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
         
-        {/* 다중 서명 지갑 섹션 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        {/* 다중 서명 지갑 섹션 (개인 지갑인 경우에만 표시) */}
+        {currentWallet.type !== 'multisig' && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">다중 서명 지갑</h3>
             <div className="flex space-x-2">
@@ -330,6 +401,7 @@ const DashboardPage = () => {
             </div>
           )}
         </div>
+        )}
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">최근 활동</h3>
