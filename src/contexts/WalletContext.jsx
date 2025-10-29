@@ -834,7 +834,8 @@ export const WalletProvider = ({ children }) => {
     
     // 유틸리티
     isConnected: !!currentWallet,
-    isReadOnly: currentWallet?.type === 'readonly'
+    isReadOnly: currentWallet?.type === 'readonly',
+    isMultiSig: currentWallet?.type === 'multisig'
   };
 
   return (

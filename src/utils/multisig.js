@@ -175,19 +175,52 @@ export const getMultiSigTransactions = async (contract) => {
         const tx = await contract.getTransaction(i);
         console.log(`트랜잭션 ${i}:`, tx);
         
-        // 트랜잭션 상태 확인
-        const isExecuted = await contract.isExecuted(i);
-        const confirmations = await contract.getConfirmations(i);
+        // 트랜잭션 상태 확인 (getTransaction에서 executed와 confirmCount를 직접 가져옴)
+        const confirmCount = await contract.getConfirmationCount(i);
+        const threshold = await contract.threshold();
+        
+        // 승인자 목록 조회
+        const owners = await contract.getOwners();
+        const confirmedBy = [];
+        for (const owner of owners) {
+          const isConfirmed = await contract.isConfirmed(i, owner);
+          if (isConfirmed) {
+            confirmedBy.push(owner);
+          }
+        }
+        
+        // 제안자 정보 조회 (이벤트 로그에서)
+        let proposer = '알 수 없음';
+        try {
+          // TransactionSubmitted 이벤트에서 제안자 정보 조회
+          const filter = contract.filters.TransactionSubmitted(i);
+          const events = await contract.queryFilter(filter);
+          console.log(`트랜잭션 ${i} 이벤트 조회 결과:`, events.length, '개 이벤트');
+          if (events.length > 0) {
+            proposer = events[0].args.proposer;
+            console.log(`트랜잭션 ${i} 제안자:`, proposer);
+          } else {
+            console.log(`트랜잭션 ${i} 이벤트를 찾을 수 없음`);
+          }
+        } catch (eventError) {
+          console.warn(`트랜잭션 ${i} 제안자 조회 실패:`, eventError.message);
+        }
+        
+        // 이더 금액을 ETH로 변환
+        const valueInEth = ethers.formatEther(tx.value.toString());
         
         transactions.push({
           id: i,
           to: tx.to,
-          value: tx.value.toString(),
+          value: valueInEth, // ETH 단위로 변환
+          valueWei: tx.value.toString(), // 원본 wei 값도 보관
           data: tx.data,
-          executed: isExecuted,
-          confirmations: confirmations.length,
-          requiredConfirmations: await contract.threshold(),
-          createdAt: new Date().toISOString() // 실제로는 블록 타임스탬프를 사용해야 함
+          executed: tx.executed,
+          confirmations: parseInt(confirmCount.toString()),
+          requiredConfirmations: parseInt(threshold.toString()),
+          createdAt: new Date().toISOString(), // 실제로는 블록 타임스탬프를 사용해야 함
+          proposer: proposer, // 실제 제안자 주소
+          confirmedBy: confirmedBy // 실제 승인자 목록
         });
       } catch (txError) {
         console.warn(`트랜잭션 ${i} 조회 실패:`, txError.message);
@@ -509,5 +542,393 @@ export const getTotalTransactionCount = async (contract) => {
   } catch (error) {
     console.error('트랜잭션 수 조회 실패:', error);
     throw new Error('트랜잭션 수를 조회할 수 없습니다.');
+  }
+};
+
+// ==================== 관리 트랜잭션 함수들 ====================
+
+/**
+ * 멤버 추가 제안
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {string} newOwner - 새 멤버 주소
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 개인키
+ * @returns {Promise<Object>} 트랜잭션 해시
+ */
+export const proposeAddOwner = async (contractAddress, newOwner, provider, privateKey) => {
+  try {
+    console.log('proposeAddOwner 호출:', { contractAddress, newOwner, provider: !!provider, privateKey: !!privateKey });
+    
+    if (!provider) {
+      throw new Error('프로바이더가 없습니다.');
+    }
+    if (!privateKey) {
+      throw new Error('개인키가 없습니다.');
+    }
+    if (!ethers.isAddress(contractAddress)) {
+      throw new Error('유효하지 않은 컨트랙트 주소입니다.');
+    }
+    if (!ethers.isAddress(newOwner)) {
+      throw new Error('유효하지 않은 새 멤버 주소입니다.');
+    }
+
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+    
+    console.log('트랜잭션 제출 중...');
+    const tx = await contract.proposeAddOwner(newOwner);
+    console.log('트랜잭션 해시:', tx.hash);
+    
+    console.log('트랜잭션 확인 대기 중...');
+    await tx.wait();
+    console.log('트랜잭션 확인 완료');
+    
+    return {
+      hash: tx.hash,
+      newOwner
+    };
+  } catch (error) {
+    console.error('멤버 추가 제안 실패:', error);
+    console.error('에러 상세:', {
+      message: error.message,
+      code: error.code,
+      reason: error.reason,
+      data: error.data
+    });
+    throw new Error(`멤버 추가 제안 실패: ${error.message}`);
+  }
+};
+
+/**
+ * 멤버 제거 제안
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {string} ownerToRemove - 제거할 멤버 주소
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 개인키
+ * @returns {Promise<Object>} 트랜잭션 해시
+ */
+export const proposeRemoveOwner = async (contractAddress, ownerToRemove, provider, privateKey) => {
+  try {
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+    
+    const tx = await contract.proposeRemoveOwner(ownerToRemove);
+    await tx.wait();
+    
+    return {
+      hash: tx.hash,
+      ownerToRemove
+    };
+  } catch (error) {
+    console.error('멤버 제거 제안 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 임계값 변경 제안
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} newThreshold - 새 임계값
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 개인키
+ * @returns {Promise<Object>} 트랜잭션 해시
+ */
+export const proposeChangeThreshold = async (contractAddress, newThreshold, provider, privateKey) => {
+  try {
+    console.log('proposeChangeThreshold 호출:', { contractAddress, newThreshold, provider: !!provider, privateKey: !!privateKey });
+    
+    if (!provider) {
+      throw new Error('프로바이더가 없습니다.');
+    }
+    if (!privateKey) {
+      throw new Error('개인키가 없습니다.');
+    }
+    if (!ethers.isAddress(contractAddress)) {
+      throw new Error('유효하지 않은 컨트랙트 주소입니다.');
+    }
+    if (newThreshold <= 0) {
+      throw new Error('임계값은 0보다 커야 합니다.');
+    }
+
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+    
+    console.log('트랜잭션 제출 중...');
+    const tx = await contract.proposeChangeThreshold(newThreshold);
+    console.log('트랜잭션 해시:', tx.hash);
+    
+    console.log('트랜잭션 확인 대기 중...');
+    await tx.wait();
+    console.log('트랜잭션 확인 완료');
+    
+    return {
+      hash: tx.hash,
+      newThreshold
+    };
+  } catch (error) {
+    console.error('임계값 변경 제안 실패:', error);
+    console.error('에러 상세:', {
+      message: error.message,
+      code: error.code,
+      reason: error.reason,
+      data: error.data
+    });
+    throw new Error(`임계값 변경 제안 실패: ${error.message}`);
+  }
+};
+
+/**
+ * 관리 트랜잭션 승인
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} txIndex - 트랜잭션 인덱스
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 개인키
+ * @returns {Promise<Object>} 트랜잭션 해시
+ */
+export const confirmManagementTransaction = async (contractAddress, txIndex, provider, privateKey) => {
+  try {
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+    
+    const tx = await contract.confirmManagementTransaction(txIndex);
+    await tx.wait();
+    
+    return {
+      hash: tx.hash,
+      txIndex
+    };
+  } catch (error) {
+    console.error('관리 트랜잭션 승인 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 관리 트랜잭션 승인 취소
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} txIndex - 트랜잭션 인덱스
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 개인키
+ * @returns {Promise<Object>} 트랜잭션 해시
+ */
+export const revokeManagementConfirmation = async (contractAddress, txIndex, provider, privateKey) => {
+  try {
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+    
+    const tx = await contract.revokeManagementConfirmation(txIndex);
+    await tx.wait();
+    
+    return {
+      hash: tx.hash,
+      txIndex
+    };
+  } catch (error) {
+    console.error('관리 트랜잭션 승인 취소 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 관리 트랜잭션 조회
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} txIndex - 트랜잭션 인덱스
+ * @param {Object} provider - 이더리움 프로바이더
+ * @returns {Promise<Object>} 관리 트랜잭션 정보
+ */
+export const getManagementTransaction = async (contractAddress, txIndex, provider) => {
+  try {
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);
+    
+    const tx = await contract.getManagementTransaction(txIndex);
+    
+    return {
+      txType: parseInt(tx.txType.toString()),
+      targetAddress: tx.targetAddress,
+      newThreshold: parseInt(tx.newThreshold.toString()),
+      executed: tx.executed,
+      confirmCount: parseInt(tx.confirmCount.toString())
+    };
+  } catch (error) {
+    console.error('관리 트랜잭션 조회 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 관리 트랜잭션 수 조회
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {Object} provider - 이더리움 프로바이더
+ * @returns {Promise<number>} 관리 트랜잭션 수
+ */
+export const getManagementTransactionCount = async (contractAddress, provider) => {
+  try {
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);
+    
+    const count = await contract.getManagementTransactionCount();
+    return parseInt(count.toString());
+  } catch (error) {
+    console.error('관리 트랜잭션 수 조회 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 관리 트랜잭션 승인 상태 확인
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} txIndex - 트랜잭션 인덱스
+ * @param {string} ownerAddress - 소유자 주소
+ * @param {Object} provider - 이더리움 프로바이더
+ * @returns {Promise<boolean>} 승인 여부
+ */
+export const isManagementConfirmed = async (contractAddress, txIndex, ownerAddress, provider) => {
+  try {
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);
+    
+    return await contract.isManagementConfirmed(txIndex, ownerAddress);
+  } catch (error) {
+    console.error('관리 트랜잭션 승인 상태 확인 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 관리 트랜잭션 승인 수 조회
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} txIndex - 트랜잭션 인덱스
+ * @param {Object} provider - 이더리움 프로바이더
+ * @returns {Promise<number>} 승인 수
+ */
+export const getManagementConfirmationCount = async (contractAddress, txIndex, provider) => {
+  try {
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);
+    
+    const count = await contract.getManagementConfirmationCount(txIndex);
+    return parseInt(count.toString());
+  } catch (error) {
+    console.error('관리 트랜잭션 승인 수 조회 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 소유자 목록 조회 (간편 함수)
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {Object} provider - 이더리움 프로바이더
+ * @returns {Promise<Array>} 소유자 주소 배열
+ */
+export const getOwners = async (contractAddress, provider) => {
+  try {
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);
+    
+    return await contract.getOwners();
+  } catch (error) {
+    console.error('소유자 목록 조회 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 다중서명 트랜잭션 승인
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} txIndex - 트랜잭션 인덱스
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 개인키
+ * @returns {Promise<Object>} 트랜잭션 해시
+ */
+export const confirmMultiSigTransaction = async (contractAddress, txIndex, provider, privateKey) => {
+  try {
+    console.log('트랜잭션 승인 시작:', { contractAddress, txIndex, provider: !!provider, privateKey: !!privateKey });
+    
+    if (!provider) {
+      throw new Error('프로바이더가 없습니다.');
+    }
+    if (!privateKey) {
+      throw new Error('개인키가 없습니다.');
+    }
+    if (!ethers.isAddress(contractAddress)) {
+      throw new Error('유효하지 않은 컨트랙트 주소입니다.');
+    }
+    if (txIndex < 0) {
+      throw new Error('유효하지 않은 트랜잭션 인덱스입니다.');
+    }
+
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+    
+    console.log('트랜잭션 승인 제출 중...');
+    const tx = await contract.confirmTransaction(txIndex);
+    console.log('트랜잭션 해시:', tx.hash);
+    
+    console.log('트랜잭션 확인 대기 중...');
+    await tx.wait();
+    console.log('트랜잭션 승인 완료');
+    
+    return {
+      hash: tx.hash,
+      txIndex: txIndex
+    };
+  } catch (error) {
+    console.error('트랜잭션 승인 실패:', error);
+    console.error('에러 상세:', {
+      message: error.message,
+      code: error.code,
+      reason: error.reason,
+      data: error.data
+    });
+    throw new Error(`트랜잭션 승인 실패: ${error.message}`);
+  }
+};
+
+/**
+ * 다중서명 트랜잭션 실행
+ * @param {string} contractAddress - 컨트랙트 주소
+ * @param {number} txIndex - 트랜잭션 인덱스
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 개인키
+ * @returns {Promise<Object>} 트랜잭션 해시
+ */
+export const executeMultiSigTransaction = async (contractAddress, txIndex, provider, privateKey) => {
+  try {
+    console.log('트랜잭션 실행 시작:', { contractAddress, txIndex, provider: !!provider, privateKey: !!privateKey });
+    
+    if (!provider) {
+      throw new Error('프로바이더가 없습니다.');
+    }
+    if (!privateKey) {
+      throw new Error('개인키가 없습니다.');
+    }
+    if (!ethers.isAddress(contractAddress)) {
+      throw new Error('유효하지 않은 컨트랙트 주소입니다.');
+    }
+    if (txIndex < 0) {
+      throw new Error('유효하지 않은 트랜잭션 인덱스입니다.');
+    }
+
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(contractAddress, contractABI, wallet);
+    
+    console.log('트랜잭션 실행 제출 중...');
+    const tx = await contract.executeTransaction(txIndex);
+    console.log('트랜잭션 해시:', tx.hash);
+    
+    console.log('트랜잭션 확인 대기 중...');
+    const receipt = await tx.wait();
+    console.log('트랜잭션 실행 완료');
+    
+    return {
+      hash: tx.hash,
+      txIndex: txIndex,
+      receipt: receipt
+    };
+  } catch (error) {
+    console.error('트랜잭션 실행 실패:', error);
+    console.error('에러 상세:', {
+      message: error.message,
+      code: error.code,
+      reason: error.reason,
+      data: error.data
+    });
+    throw new Error(`트랜잭션 실행 실패: ${error.message}`);
   }
 };

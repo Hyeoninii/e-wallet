@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useWallet } from '../contexts/WalletContext';
 import { ethers } from 'ethers';
+import { 
+  getManagementTransactionCount,
+  getManagementTransaction,
+  isManagementConfirmed,
+  getManagementConfirmationCount
+} from '../utils/multisig';
 
 /**
  * 다중 서명 지갑 대시보드 페이지
@@ -124,18 +130,84 @@ const MultiSigDashboardPage = () => {
             setCurrentUser(currentWallet.address);
           }
 
-          // 트랜잭션 목록 로드
+          // 트랜잭션 목록 로드 (일반 트랜잭션 + 관리 트랜잭션)
           try {
             console.log('다중서명 트랜잭션 로드 시작:', address);
             const transactions = await getMultiSigWalletTransactions(address);
-            console.log('로드된 트랜잭션 수:', transactions.length);
+            console.log('로드된 일반 트랜잭션 수:', transactions.length);
             
-            // 최근 5개 트랜잭션만 표시
-            const recentTxs = transactions.slice(-5).reverse();
+            // 관리 트랜잭션 로드
+            let managementTransactions = [];
+            try {
+              console.log('관리 트랜잭션 로드 시작...');
+              console.log('사용 중인 컨트랙트 주소:', address);
+              console.log('프로바이더 상태:', !!provider);
+              
+              const mgmtTxCount = await getManagementTransactionCount(address, provider);
+              console.log('관리 트랜잭션 수:', mgmtTxCount);
+              console.log('관리 트랜잭션 수 타입:', typeof mgmtTxCount, mgmtTxCount.toString());
+              
+              for (let i = 0; i < mgmtTxCount; i++) {
+                try {
+                  const mgmtTx = await getManagementTransaction(address, i, provider);
+                  const isConfirmedByUser = await isManagementConfirmed(address, i, currentWallet.address, provider);
+                  const confirmCount = await getManagementConfirmationCount(address, i, provider);
+                  
+                  // 관리 트랜잭션을 일반 트랜잭션과 동일한 형태로 변환
+                  const convertedTx = {
+                    id: `mgmt_${i}`,
+                    to: mgmtTx.targetAddress || '0x0000000000000000000000000000000000000000',
+                    value: '0',
+                    data: '0x',
+                    executed: mgmtTx.executed,
+                    confirmations: parseInt(confirmCount.toString()),
+                    requiredConfirmations: Number(contractInfo.threshold),
+                    createdAt: new Date().toISOString(),
+                    type: 'management',
+                    mgmtType: mgmtTx.txType,
+                    mgmtTarget: mgmtTx.targetAddress,
+                    mgmtThreshold: mgmtTx.newThreshold,
+                    isConfirmedByUser: isConfirmedByUser
+                  };
+                  
+                  managementTransactions.push(convertedTx);
+                } catch (mgmtTxError) {
+                  console.warn(`관리 트랜잭션 ${i} 조회 실패:`, mgmtTxError.message);
+                }
+              }
+              console.log('로드된 관리 트랜잭션 수:', managementTransactions.length);
+            } catch (mgmtError) {
+              console.warn('관리 트랜잭션 로드 실패:', mgmtError);
+            }
+            
+            // 일반 트랜잭션과 관리 트랜잭션 합치기
+            const allTransactions = [...transactions, ...managementTransactions];
+            
+            // 대기중인 트랜잭션 수 계산 (실행되지 않은 트랜잭션)
+            const pendingCount = allTransactions.filter(tx => !tx.executed).length;
+            console.log('대기중인 트랜잭션 수:', pendingCount);
+            
+            // 최근 5개 트랜잭션만 표시 (최신순)
+            const recentTxs = allTransactions
+              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+              .slice(0, 5);
+              
+            console.log('최종 표시할 트랜잭션 수:', recentTxs.length);
             setRecentTransactions(recentTxs);
+            
+            // 대기중인 트랜잭션 수 업데이트
+            setMultisigWallet(prev => ({
+              ...prev,
+              pendingTransactions: pendingCount
+            }));
           } catch (txError) {
             console.warn('트랜잭션 로드 실패:', txError);
             setRecentTransactions([]);
+            // 에러 시 대기중인 트랜잭션 수를 0으로 설정
+            setMultisigWallet(prev => ({
+              ...prev,
+              pendingTransactions: 0
+            }));
           }
         } else {
           // pending 상태인 경우 저장된 정보로 표시
@@ -554,10 +626,27 @@ const MultiSigDashboardPage = () => {
                   }`}></div>
                   <div>
                     <p className="text-sm font-medium text-gray-900">
-                      트랜잭션 #{tx.id}
+                      {tx.type === 'management' ? (
+                        <>
+                          {tx.mgmtType === 0 && '멤버 추가'}
+                          {tx.mgmtType === 1 && '멤버 제거'}
+                          {tx.mgmtType === 2 && '임계값 변경'}
+                          {' '}제안 #{tx.id.replace('mgmt_', '')}
+                        </>
+                      ) : (
+                        `트랜잭션 #${tx.id}`
+                      )}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {ethers.formatEther(tx.value)} ETH → {tx.to.slice(0, 6)}...{tx.to.slice(-4)}
+                      {tx.type === 'management' ? (
+                        <>
+                          {tx.mgmtType === 0 && `새 멤버: ${tx.mgmtTarget?.slice(0, 6)}...${tx.mgmtTarget?.slice(-4)}`}
+                          {tx.mgmtType === 1 && `제거 대상: ${tx.mgmtTarget?.slice(0, 6)}...${tx.mgmtTarget?.slice(-4)}`}
+                          {tx.mgmtType === 2 && `새 임계값: ${tx.mgmtThreshold}명`}
+                        </>
+                      ) : (
+                        `${tx.value} ETH → ${tx.to.slice(0, 6)}...${tx.to.slice(-4)}`
+                      )}
                     </p>
                   </div>
                 </div>
