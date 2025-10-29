@@ -83,7 +83,13 @@ const MultiSigTransactionsPage = () => {
    * 사용자가 이미 승인했는지 확인
    */
   const isConfirmedByUser = (tx) => {
-    return tx.confirmedBy && tx.confirmedBy.includes(currentUser);
+    if (!tx.confirmedBy || !Array.isArray(tx.confirmedBy)) {
+      return false;
+    }
+    
+    // 주소를 소문자로 변환하여 비교
+    const currentUserLower = currentUser.toLowerCase();
+    return tx.confirmedBy.some(addr => addr.toLowerCase() === currentUserLower);
   };
 
   /**
@@ -92,6 +98,15 @@ const MultiSigTransactionsPage = () => {
   const handleConfirmTransaction = async (txId) => {
     try {
       console.log('트랜잭션 승인 시작:', txId);
+      console.log('현재 사용자:', currentUser);
+      
+      // 현재 트랜잭션 정보 확인
+      const currentTx = transactions.find(tx => tx.id === txId);
+      if (currentTx) {
+        console.log('현재 트랜잭션 정보:', currentTx);
+        console.log('승인자 목록:', currentTx.confirmedBy);
+        console.log('이미 승인했는가?', isConfirmedByUser(currentTx));
+      }
       
       const result = await confirmMultiSigTransaction(address, txId, provider, currentWallet.privateKey);
       console.log('트랜잭션 승인 완료:', result);
@@ -101,6 +116,7 @@ const MultiSigTransactionsPage = () => {
       // 트랜잭션 목록 새로고침
       const contract = new ethers.Contract(address, contractABI, provider);
       const txList = await getMultiSigTransactions(contract);
+      console.log('새로고침된 트랜잭션 목록:', txList);
       setTransactions(txList);
     } catch (error) {
       console.error('승인 실패:', error);

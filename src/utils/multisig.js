@@ -183,11 +183,17 @@ export const getMultiSigTransactions = async (contract) => {
         const owners = await contract.getOwners();
         const confirmedBy = [];
         for (const owner of owners) {
-          const isConfirmed = await contract.isConfirmed(i, owner);
-          if (isConfirmed) {
-            confirmedBy.push(owner);
+          try {
+            const isConfirmed = await contract.isConfirmed(i, owner);
+            console.log(`트랜잭션 ${i}, 소유자 ${owner}: 승인됨 = ${isConfirmed}`);
+            if (isConfirmed) {
+              confirmedBy.push(owner);
+            }
+          } catch (confirmError) {
+            console.warn(`트랜잭션 ${i}, 소유자 ${owner} 승인 상태 확인 실패:`, confirmError.message);
           }
         }
+        console.log(`트랜잭션 ${i} 승인자 목록:`, confirmedBy);
         
         // 제안자 정보 조회 (이벤트 로그에서)
         let proposer = '알 수 없음';
@@ -856,6 +862,22 @@ export const confirmMultiSigTransaction = async (contractAddress, txIndex, provi
     const wallet = new ethers.Wallet(privateKey, provider);
     const contract = new ethers.Contract(contractAddress, contractABI, wallet);
     
+    // 승인 전 상태 확인 (디버깅용)
+    console.log('승인 전 상태 확인 중...');
+    const owners = await contract.getOwners();
+    const currentUser = wallet.address;
+    console.log('현재 사용자 주소:', currentUser);
+    console.log('소유자 목록:', owners);
+    
+    // 이미 승인했는지 확인 (디버깅용)
+    const isAlreadyConfirmed = await contract.isConfirmed(txIndex, currentUser);
+    console.log('이미 승인했는가?', isAlreadyConfirmed);
+    
+    // 트랜잭션 존재 여부 확인 (디버깅용)
+    const txExists = await contract.getTransactionCount();
+    console.log('총 트랜잭션 수:', txExists.toString());
+    console.log('요청한 트랜잭션 인덱스:', txIndex);
+    
     console.log('트랜잭션 승인 제출 중...');
     const tx = await contract.confirmTransaction(txIndex);
     console.log('트랜잭션 해시:', tx.hash);
@@ -876,7 +898,22 @@ export const confirmMultiSigTransaction = async (contractAddress, txIndex, provi
       reason: error.reason,
       data: error.data
     });
-    throw new Error(`트랜잭션 승인 실패: ${error.message}`);
+    
+    // 에러 메시지 개선
+    let errorMessage = '트랜잭션 승인 실패';
+    if (error.data === '0x3ee5aeb5') {
+      errorMessage = '이미 이 트랜잭션에 승인했습니다.';
+    } else if (error.message.includes('Not an owner')) {
+      errorMessage = '승인 권한이 없습니다. 다중서명 지갑의 소유자가 아닙니다.';
+    } else if (error.message.includes('Transaction does not exist')) {
+      errorMessage = '존재하지 않는 트랜잭션입니다.';
+    } else if (error.message.includes('Transaction already executed')) {
+      errorMessage = '이미 실행된 트랜잭션입니다.';
+    } else {
+      errorMessage = `트랜잭션 승인 실패: ${error.message}`;
+    }
+    
+    throw new Error(errorMessage);
   }
 };
 
