@@ -12,11 +12,11 @@ import { getMultiSigWalletBytecode } from './contractCompiler.js';
  */
 export const deployMultiSigWallet = async (provider, privateKey, owners, threshold) => {
   try {
-    console.log('다중 서명 지갑 배포 시작:', { owners, threshold });
+    console.log('다중 서명 지갑 배포 시작');
     
     // 지갑 생성
     const wallet = new ethers.Wallet(privateKey, provider);
-    console.log('배포자 주소:', wallet.address);
+    // 배포자 주소 로그는 생략
     
     // 컨트랙트 팩토리 생성
     const contractFactory = new ethers.ContractFactory(
@@ -31,8 +31,6 @@ export const deployMultiSigWallet = async (provider, privateKey, owners, thresho
     
     const deploymentTx = contract.deploymentTransaction();
     console.log('배포 트랜잭션 해시:', deploymentTx.hash);
-    console.log('배포 대기 중...');
-    
     // 배포 완료 대기 (타임아웃 설정)
     try {
       // 120초 타임아웃 설정 (더 긴 대기 시간)
@@ -46,7 +44,7 @@ export const deployMultiSigWallet = async (provider, privateKey, owners, thresho
       ]);
       
       const contractAddress = await contract.getAddress();
-      console.log('배포 완료! 컨트랙트 주소:', contractAddress);
+      console.log('배포 완료');
       
       return {
         address: contractAddress,
@@ -58,10 +56,7 @@ export const deployMultiSigWallet = async (provider, privateKey, owners, thresho
       };
       
     } catch (waitError) {
-      console.warn('배포 대기 중 오류 발생:', waitError.message);
-      
-      // Etherscan에서 확인 가능하도록 트랜잭션 해시는 반환
-      console.log('트랜잭션이 제출되었습니다. Etherscan에서 확인해보세요:', deploymentTx.hash);
+      console.warn('배포 대기 중 오류 발생');
       
       // 배포가 완료되지 않은 경우 pending 상태로 반환
       return {
@@ -162,78 +157,38 @@ export const isMultiSigWallet = async (provider, contractAddress) => {
  */
 export const getMultiSigTransactions = async (contract) => {
   try {
-    console.log('다중서명 트랜잭션 조회 시작:', contract.target);
-    
     const transactionCount = await contract.getTransactionCount();
-    console.log('총 트랜잭션 수:', transactionCount.toString());
-    
     const transactions = [];
-    
-    // 각 트랜잭션 정보 조회
     for (let i = 0; i < transactionCount; i++) {
       try {
         const tx = await contract.getTransaction(i);
-        console.log(`트랜잭션 ${i}:`, tx);
-        
-        // 트랜잭션 상태 확인 (getTransaction에서 executed와 confirmCount를 직접 가져옴)
         const confirmCount = await contract.getConfirmationCount(i);
         const threshold = await contract.threshold();
-        
-        // 승인자 목록 조회
-        const owners = await contract.getOwners();
-        const confirmedBy = [];
-        for (const owner of owners) {
-          try {
-            const isConfirmed = await contract.isConfirmed(i, owner);
-            console.log(`트랜잭션 ${i}, 소유자 ${owner}: 승인됨 = ${isConfirmed}`);
-            if (isConfirmed) {
-              confirmedBy.push(owner);
-            }
-          } catch (confirmError) {
-            console.warn(`트랜잭션 ${i}, 소유자 ${owner} 승인 상태 확인 실패:`, confirmError.message);
-          }
-        }
-        console.log(`트랜잭션 ${i} 승인자 목록:`, confirmedBy);
-        
-        // 제안자 정보 조회 (이벤트 로그에서)
+        // 제안자 정보 (있으면)
         let proposer = '알 수 없음';
         try {
-          // TransactionSubmitted 이벤트에서 제안자 정보 조회
           const filter = contract.filters.TransactionSubmitted(i);
           const events = await contract.queryFilter(filter);
-          console.log(`트랜잭션 ${i} 이벤트 조회 결과:`, events.length, '개 이벤트');
           if (events.length > 0) {
             proposer = events[0].args.proposer;
-            console.log(`트랜잭션 ${i} 제안자:`, proposer);
-          } else {
-            console.log(`트랜잭션 ${i} 이벤트를 찾을 수 없음`);
           }
-        } catch (eventError) {
-          console.warn(`트랜잭션 ${i} 제안자 조회 실패:`, eventError.message);
-        }
-        
-        // 이더 금액을 ETH로 변환
+        } catch {}
         const valueInEth = ethers.formatEther(tx.value.toString());
-        
         transactions.push({
           id: i,
           to: tx.to,
-          value: valueInEth, // ETH 단위로 변환
-          valueWei: tx.value.toString(), // 원본 wei 값도 보관
+          value: valueInEth,
+          valueWei: tx.value.toString(),
           data: tx.data,
           executed: tx.executed,
           confirmations: parseInt(confirmCount.toString()),
           requiredConfirmations: parseInt(threshold.toString()),
-          createdAt: new Date().toISOString(), // 실제로는 블록 타임스탬프를 사용해야 함
-          proposer: proposer, // 실제 제안자 주소
-          confirmedBy: confirmedBy // 실제 승인자 목록
+          createdAt: new Date().toISOString(),
+          proposer,
+          confirmedBy: []
         });
-      } catch (txError) {
-        console.warn(`트랜잭션 ${i} 조회 실패:`, txError.message);
-      }
+      } catch {}
     }
-    
-    console.log('조회된 트랜잭션 수:', transactions.length);
     return transactions;
   } catch (error) {
     console.error('다중서명 트랜잭션 조회 실패:', error);
@@ -321,126 +276,43 @@ export const executeTransaction = async (contract, transactionId) => {
  */
 export const getMultiSigWalletInfo = async (contract) => {
   try {
-    console.log('다중서명 지갑 정보 조회 시작:', contract.target);
-    
-    // 컨트랙트 존재 여부 먼저 확인 (선택적)
-    console.log('컨트랙트 코드 확인 중...');
-    try {
-      const contractCode = await contract.provider.getCode(contract.target);
-      console.log('컨트랙트 코드:', contractCode);
-      
-      if (contractCode === '0x' || contractCode === '0x0') {
-        console.warn('컨트랙트가 배포되지 않았을 수 있음, 계속 시도...');
-      }
-    } catch (codeError) {
-      console.warn('컨트랙트 코드 조회 실패, 계속 시도:', codeError.message);
-    }
-    
     // 기본 정보 조회 (오류 시 기본값 사용)
     let owners = [];
     let threshold = 0;
-    
     try {
-      console.log('getOwners() 호출 중...');
-      console.log('contract 정보:', {
-        target: contract.target,
-        provider: contract.provider,
-        hasGetOwners: typeof contract.getOwners === 'function'
-      });
-      
       owners = await contract.getOwners();
-      console.log('getOwners() 성공:', owners);
-      console.log('owners 타입:', typeof owners, '길이:', owners?.length);
-    } catch (ownersError) {
-      console.error('getOwners() 실패:', ownersError);
-      console.error('에러 상세:', {
-        message: ownersError.message,
-        code: ownersError.code,
-        reason: ownersError.reason
-      });
+    } catch {
       owners = [];
     }
-    
     try {
-      console.log('threshold() 호출 중...');
       threshold = await contract.threshold();
-      console.log('threshold() 성공:', threshold);
-    } catch (thresholdError) {
-      console.warn('threshold() 실패, 기본값 사용:', thresholdError.message);
+    } catch {
       threshold = 0;
     }
-    
-    // 잔액은 별도로 조회 (provider 문제 해결)
+    // 잔액 조회 (실패 시 0)
     let balance = '0';
     try {
-      console.log('잔액 조회 시작...');
-      console.log('contract 정보:', {
-        provider: contract.provider,
-        target: contract.target,
-        hasGetBalance: contract.provider && typeof contract.provider.getBalance === 'function'
-      });
-      
-      // 여러 방법으로 잔액 조회 시도
       if (contract.provider && contract.target) {
-        try {
-          // 방법 1: contract.provider.getBalance() 사용
-          balance = await contract.provider.getBalance(contract.target);
-          console.log('잔액 조회 성공 (방법 1):', balance);
-        } catch (method1Error) {
-          console.warn('방법 1 실패, 방법 2 시도:', method1Error.message);
-          
-          try {
-            // 방법 2: provider 직접 사용
-            balance = await contract.provider.getBalance(contract.target);
-            console.log('잔액 조회 성공 (방법 2):', balance);
-          } catch (method2Error) {
-            console.warn('방법 2 실패, 방법 3 시도:', method2Error.message);
-            
-            try {
-              // 방법 3: ethers.getBalance 사용
-              balance = await ethers.getBalance(contract.provider, contract.target);
-              console.log('잔액 조회 성공 (방법 3):', balance);
-            } catch (method3Error) {
-              console.warn('방법 3 실패, 기본값 사용:', method3Error.message);
-              balance = '0';
-            }
-          }
-        }
-      } else {
-        console.warn('provider 또는 target이 없음, 기본값 사용');
-        balance = '0';
+        balance = await contract.provider.getBalance(contract.target);
       }
-    } catch (balanceError) {
-      console.warn('잔액 조회 실패, 기본값 사용:', balanceError);
+    } catch {
       balance = '0';
     }
-    
-    console.log('기본 정보 조회 완료:', { owners, threshold, balance });
-    
-    // 트랜잭션 수는 선택적으로 조회
+    // 트랜잭션 수 (선택)
     let transactionCount = 0;
     try {
       transactionCount = await contract.getTransactionCount();
-      console.log('트랜잭션 수 조회 완료:', transactionCount);
-    } catch (txError) {
-      console.warn('트랜잭션 수 조회 실패, 기본값 사용:', txError);
-    }
-    
-    const result = {
+    } catch {}
+    return {
       address: contract.target,
-      owners: owners,
+      owners,
       threshold: threshold.toString(),
       balance: ethers.formatEther(balance),
       ownerCount: owners.length,
       transactionCount: transactionCount.toString()
     };
-    
-    console.log('최종 결과:', result);
-    return result;
   } catch (error) {
     console.error('다중 서명 지갑 정보 조회 실패:', error);
-    console.error('오류 상세:', error.message);
-    console.error('오류 스택:', error.stack);
     throw new Error('지갑 정보를 가져올 수 없습니다: ' + error.message);
   }
 };
