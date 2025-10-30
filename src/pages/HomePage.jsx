@@ -9,6 +9,7 @@ const HomePage = () => {
   const navigate = useNavigate();
   const { 
     savedWallets, 
+    savedMultiSigWallets,
     selectWallet, 
     openWalletByAddress, 
     recoverWalletByPrivateKey,
@@ -236,8 +237,8 @@ const HomePage = () => {
           </div>
         </div>
 
-        {/* 저장된 지갑 목록 */}
-        {savedWallets.length > 0 && (
+        {/* 저장된 지갑 목록 (일반 + 멀티시그) */}
+        {(savedWallets.length > 0 || savedMultiSigWallets?.length > 0) && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">내 지갑</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -265,6 +266,34 @@ const HomePage = () => {
                       wallet.type === 'hd' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                     }`}>
                       {wallet.type === 'hd' ? 'HD 지갑' : '개인키 지갑'}
+                    </span>
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              ))}
+
+              {savedMultiSigWallets?.map((mw) => (
+                <div
+                  key={mw.address}
+                  onClick={() => navigate(`/multisig/${mw.address}`)}
+                  className="p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-center mb-3">
+                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                      <span className="text-purple-600 font-semibold text-sm">M</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 truncate">{mw.name || '다중서명 지갑'}</div>
+                      <div className="text-xs text-gray-500 font-mono">
+                        {mw.address.slice(0, 6)}...{mw.address.slice(-4)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      멀티시그
                     </span>
                     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -360,20 +389,15 @@ const HomePage = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       개인키
                     </label>
-                    <div className="flex items-center space-x-2">
-                      <code className="flex-1 p-3 bg-gray-50 rounded-md text-sm font-mono border border-gray-200 break-all whitespace-pre-wrap">
-                        {privateKeyInput.length > 0 ? 
-                          privateKeyInput.match(/.{1,32}/g)?.join('\n') || privateKeyInput :
-                          '•'.repeat(32) + '\n' + '•'.repeat(32) + '\n' + '•'.repeat(32)
-                        }
-                      </code>
-                      <button
-                        onClick={() => setPrivateKeyInput('')}
-                        className="p-2 text-gray-400 hover:text-gray-600"
-                        title="개인키 표시/숨김"
-                      >
-                        {privateKeyInput.length > 0 ? 'Hide' : 'Show'}
-                      </button>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        value={privateKeyInput}
+                        onChange={(e) => setPrivateKeyInput(e.target.value)}
+                        placeholder="0x로 시작하는 64자리 개인키"
+                        className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      {/* 필요 시 토글로 평문 표시를 원하면 Recover 페이지처럼 구현 가능 */}
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
                       개인키를 입력하면 트랜잭션을 보낼 수 있는 진짜 지갑으로 열립니다.

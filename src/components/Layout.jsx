@@ -12,8 +12,11 @@ const Layout = ({ children }) => {
   const { currentWallet } = useWallet();
   const location = useLocation();
 
-  // 지갑이 연결되지 않은 경우 사이드바 숨김
-  const shouldShowSidebar = currentWallet && location.pathname !== '/';
+  // 지갑이 연결되지 않은 경우 또는 특정 경로에서는 사이드바 숨김
+  const hideOnPaths = ['/create', '/multisig/create'];
+  const shouldShowSidebar = currentWallet 
+    && location.pathname !== '/'
+    && !hideOnPaths.includes(location.pathname);
 
   return (
     <div className="min-h-screen bg-gray-50">

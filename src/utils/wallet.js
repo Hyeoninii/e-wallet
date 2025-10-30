@@ -44,14 +44,11 @@ export const loadWalletData = (key) => {
  */
 export const createNewWallet = (name) => {
   try {
-    // 128비트 엔트로피로 12단어 니모닉 생성 (Ethers.js v6 방식)
+    // 128비트 엔트로피로 12단어 니모닉 생성 (우선 시도)
     const entropy = ethers.randomBytes(16);
     const mnemonic = ethers.entropyToPhrase(entropy);
-    
-    // HD 지갑 생성 (메타마스크와 동일한 BIP44 경로: m/44'/60'/0'/0/0)
     const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic);
-    
-    const walletData = {
+    return {
       name,
       address: wallet.address,
       mnemonic,
@@ -59,11 +56,25 @@ export const createNewWallet = (name) => {
       createdAt: new Date().toISOString(),
       type: 'hd'
     };
-    
-    return walletData;
   } catch (error) {
-    console.error('지갑 생성 실패:', error);
-    throw new Error('지갑 생성에 실패했습니다.');
+    console.error('지갑 생성 실패(기본 경로):', error);
+    // 대체 경로: createRandom 사용
+    try {
+      const wallet = ethers.Wallet.createRandom();
+      const mnemonic = wallet.mnemonic?.phrase || '';
+      return {
+        name,
+        address: wallet.address,
+        mnemonic,
+        privateKey: wallet.privateKey,
+        createdAt: new Date().toISOString(),
+        type: 'hd'
+      };
+    } catch (fallbackError) {
+      console.error('지갑 생성 실패(대체 경로):', fallbackError);
+      const reason = fallbackError?.message || error?.message || '알 수 없는 오류';
+      throw new Error('지갑 생성에 실패했습니다: ' + reason);
+    }
   }
 };
 
@@ -184,10 +195,7 @@ export const isValidAddress = (address) => {
  * @param {string} address - 전체 주소
  * @returns {string} 짧은 형태의 주소
  */
-export const shortenAddress = (address) => {
-  if (!address) return '';
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-};
+// shortenAddress: 현재 미사용이라 제거되었습니다.
 
 /**
  * Wei를 ETH로 변환
@@ -199,20 +207,6 @@ export const weiToEth = (wei) => {
     return ethers.formatEther(wei);
   } catch (error) {
     console.error('Wei 변환 실패:', error);
-    return '0';
-  }
-};
-
-/**
- * ETH를 Wei로 변환
- * @param {string|number} eth - ETH 단위 값
- * @returns {string} Wei 단위 문자열
- */
-export const ethToWei = (eth) => {
-  try {
-    return ethers.parseEther(eth.toString());
-  } catch (error) {
-    console.error('ETH 변환 실패:', error);
     return '0';
   }
 };

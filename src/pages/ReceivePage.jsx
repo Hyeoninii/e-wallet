@@ -120,7 +120,7 @@ const ReceivePage = () => {
         <div className="space-y-2 text-sm text-gray-600">
           <div className="flex justify-between">
             <span>네트워크:</span>
-            <span>{provider?._getConnection?.url?.includes('infura') ? 'Infura (Sepolia)' : 'Custom Node (100.67.242.15:13500)'}</span>
+            <span>Custom Node (100.67.242.15:13500)</span>
           </div>
           <div className="flex justify-between">
             <span>지갑 타입:</span>
