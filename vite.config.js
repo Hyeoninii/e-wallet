@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api/ethereum': {
-        target: 'http://100.67.242.15:13500',
+        target: 'https://sepolia.infura.io/v3/5dc76d758e1444e18669946ef9b04d0c',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ethereum/, ''),
         configure: (proxy, options) => {

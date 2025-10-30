@@ -205,7 +205,7 @@ const SettingsPage = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">현재 네트워크</label>
               <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                Custom Node (100.67.242.15:13500)
+                {provider?._getConnection?.url?.includes('infura') ? 'Infura (Sepolia)' : 'Custom Node (100.67.242.15:13500)'}
               </div>
             </div>
             

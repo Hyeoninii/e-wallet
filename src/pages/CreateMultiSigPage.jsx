@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../contexts/WalletContext';
+import { getCompilationGuide } from '../utils/contractCompiler';
 
 /**
  * 다중 서명 지갑 생성 페이지
@@ -15,10 +16,12 @@ const CreateMultiSigPage = () => {
   const [threshold, setThreshold] = useState(2);
   const [isLoading, setIsLoading] = useState(false);
   const [deploymentResult, setDeploymentResult] = useState(null);
+  const [showCompilationGuide, setShowCompilationGuide] = useState(false);
 
   // 현재 지갑이 없고 저장된 지갑이 있으면 자동으로 선택
   React.useEffect(() => {
     if (!currentWallet && savedWallets.length > 0) {
+      console.log('저장된 지갑이 있으므로 첫 번째 지갑을 자동 선택:', savedWallets[0].address);
       selectWallet(savedWallets[0]);
     }
   }, [savedWallets, currentWallet, selectWallet]);
@@ -95,6 +98,8 @@ const CreateMultiSigPage = () => {
     );
     
     if (!hasValidOwner) {
+      console.log('입력된 소유자 주소들:', validOwners);
+      console.log('저장된 지갑 주소들:', savedWalletAddresses);
       alert('소유자 목록에 로컬 스토리지에 저장된 지갑 주소가 최소 하나는 포함되어야 합니다.\n\n먼저 지갑을 생성하거나 복구한 후, 해당 지갑 주소를 소유자 목록에 추가해주세요.');
       return;
     }
@@ -104,22 +109,31 @@ const CreateMultiSigPage = () => {
       setDeploymentResult(null);
       clearError();
       
-      // 생성 시작
+      console.log('다중 서명 지갑 생성 시작:', {
+        name: walletName,
+        owners: validOwners,
+        threshold
+      });
       
       // 실제 다중 서명 지갑 생성
       const result = await createMultiSigWallet(walletName, validOwners, threshold);
       
       setDeploymentResult(result);
-      // 생성 완료
+      console.log('다중 서명 지갑 생성 완료:', result);
       
       // 배포 완료 후 대시보드로 이동
+      console.log('result:', result);
+      console.log('result.address:', result.address);
+      console.log('result.pending:', result.pending);
       
       if (result.address && result.address.startsWith('0x') && !result.pending) {
         // 실제 컨트랙트 주소인 경우
+        console.log('실제 주소로 대시보드 이동:', result.address);
         alert(`다중 서명 지갑이 성공적으로 생성되었습니다!\n주소: ${result.address}`);
         navigate(`/multisig/${result.address}`);
       } else {
         // 배포가 아직 확인되지 않은 경우 - 대시보드로 이동
+        console.log('배포 대기 중 - 대시보드로 이동하여 상태 확인');
         alert(`다중 서명 지갑 배포 트랜잭션이 제출되었습니다!\n\n트랜잭션 해시: ${result.deploymentTx}\n\n대시보드에서 배포 상태를 확인할 수 있습니다.`);
         // 대시보드로 이동하여 사용자가 배포 상태를 확인할 수 있도록 함
         navigate('/');
