@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ethers } from 'ethers';
 import { useWallet } from '../contexts/WalletContext';
+import { confirmMultiSigTransaction, executeMultiSigTransaction, getMultiSigTransactions } from '../utils/multisig';
+import { contractABI } from '../_contracts/MultiSigWallet';
 
 /**
  * 다중 서명 트랜잭션 목록 및 승인 페이지
@@ -59,6 +62,7 @@ const MultiSigTransactionsPage = () => {
         console.log('다중서명 트랜잭션 로드 시작:', address);
         const txList = await getMultiSigWalletTransactions(address);
         console.log('로드된 트랜잭션 수:', txList.length);
+        console.log('트랜잭션 데이터 구조:', txList[0]); // 첫 번째 트랜잭션 구조 확인
         
         setTransactions(txList);
       } catch (error) {
@@ -71,9 +75,22 @@ const MultiSigTransactionsPage = () => {
     };
 
     loadWallet();
-  }, [address, provider, getMultiSigWalletData, getMultiSigWalletTransactions]);
+  }, [address, provider]);
 
   const currentUser = currentWallet?.address || '0x0000000000000000000000000000000000000000';
+
+  /**
+   * 사용자가 이미 승인했는지 확인
+   */
+  const isConfirmedByUser = (tx) => {
+    if (!tx.confirmedBy || !Array.isArray(tx.confirmedBy)) {
+      return false;
+    }
+    
+    // 주소를 소문자로 변환하여 비교
+    const currentUserLower = currentUser.toLowerCase();
+    return tx.confirmedBy.some(addr => addr.toLowerCase() === currentUserLower);
+  };
 
   /**
    * 트랜잭션 승인
@@ -81,14 +98,25 @@ const MultiSigTransactionsPage = () => {
   const handleConfirmTransaction = async (txId) => {
     try {
       console.log('트랜잭션 승인 시작:', txId);
+      console.log('현재 사용자:', currentUser);
       
-      const result = await confirmMultiSigTransaction(address, txId);
+      // 현재 트랜잭션 정보 확인
+      const currentTx = transactions.find(tx => tx.id === txId);
+      if (currentTx) {
+        console.log('현재 트랜잭션 정보:', currentTx);
+        console.log('승인자 목록:', currentTx.confirmedBy);
+        console.log('이미 승인했는가?', isConfirmedByUser(currentTx));
+      }
+      
+      const result = await confirmMultiSigTransaction(address, txId, provider, currentWallet.privateKey);
       console.log('트랜잭션 승인 완료:', result);
       
       alert('트랜잭션이 승인되었습니다!');
       
       // 트랜잭션 목록 새로고침
-      const txList = await getMultiSigWalletTransactions(address);
+      const contract = new ethers.Contract(address, contractABI, provider);
+      const txList = await getMultiSigTransactions(contract);
+      console.log('새로고침된 트랜잭션 목록:', txList);
       setTransactions(txList);
     } catch (error) {
       console.error('승인 실패:', error);
@@ -103,13 +131,14 @@ const MultiSigTransactionsPage = () => {
     try {
       console.log('트랜잭션 실행 시작:', txId);
       
-      const result = await executeMultiSigTransaction(address, txId);
+      const result = await executeMultiSigTransaction(address, txId, provider, currentWallet.privateKey);
       console.log('트랜잭션 실행 완료:', result);
       
       alert('트랜잭션이 실행되었습니다!');
       
       // 트랜잭션 목록 새로고침
-      const txList = await getMultiSigWalletTransactions(address);
+      const contract = new ethers.Contract(address, contractABI, provider);
+      const txList = await getMultiSigTransactions(contract);
       setTransactions(txList);
     } catch (error) {
       console.error('실행 실패:', error);
@@ -149,18 +178,12 @@ const MultiSigTransactionsPage = () => {
     }
   };
 
-  /**
-   * 사용자가 이미 승인했는지 확인
-   */
-  const isConfirmedByUser = (tx) => {
-    return tx.confirmedBy.includes(currentUser);
-  };
 
   /**
    * 실행 가능한지 확인
    */
   const canExecute = (tx) => {
-    return tx.status === 'pending' && tx.confirmations >= tx.threshold;
+    return !tx.executed && tx.confirmations >= tx.requiredConfirmations;
   };
 
   // 로딩 상태
@@ -221,7 +244,8 @@ const MultiSigTransactionsPage = () => {
 
       {/* 트랜잭션 목록 */}
       <div className="space-y-4">
-        {transactions.map((tx) => (
+        {transactions && transactions.length > 0 ? (
+          transactions.map((tx) => (
           <div key={tx.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
@@ -237,19 +261,27 @@ const MultiSigTransactionsPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-500">제안자:</span>
-                    <code className="ml-2 font-mono text-gray-900">
-                      {tx.proposer.slice(0, 6)}...{tx.proposer.slice(-4)}
-                    </code>
+                    <span className="ml-2 text-gray-900">
+                      {tx.proposer === '알 수 없음' ? (
+                        <span className="text-gray-500 italic">알 수 없음</span>
+                      ) : (
+                        <code className="font-mono text-blue-600">
+                          {tx.proposer.slice(0, 6)}...{tx.proposer.slice(-4)}
+                        </code>
+                      )}
+                    </span>
                   </div>
                   <div>
                     <span className="text-gray-500">수신 주소:</span>
                     <code className="ml-2 font-mono text-gray-900">
-                      {tx.to.slice(0, 6)}...{tx.to.slice(-4)}
+                      {tx.to ? `${tx.to.slice(0, 6)}...${tx.to.slice(-4)}` : '알 수 없음'}
                     </code>
                   </div>
                   <div>
                     <span className="text-gray-500">금액:</span>
-                    <span className="ml-2 font-semibold text-gray-900">{tx.value} ETH</span>
+                    <span className="ml-2 font-semibold text-gray-900">
+                      {parseFloat(tx.value).toFixed(6)} ETH
+                    </span>
                   </div>
                   <div>
                     <span className="text-gray-500">승인:</span>
@@ -272,12 +304,12 @@ const MultiSigTransactionsPage = () => {
             <div className="mb-4">
               <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
                 <span>승인 진행률</span>
-                <span>{tx.confirmations}/{tx.threshold}</span>
+                <span>{tx.confirmations}/{tx.requiredConfirmations}</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(tx.confirmations / tx.threshold) * 100}%` }}
+                  style={{ width: `${(tx.confirmations / tx.requiredConfirmations) * 100}%` }}
                 ></div>
               </div>
             </div>
@@ -286,15 +318,16 @@ const MultiSigTransactionsPage = () => {
             <div className="mb-4">
               <div className="text-sm text-gray-600 mb-2">승인자:</div>
               <div className="flex flex-wrap gap-2">
-                {tx.confirmedBy.map((address, index) => (
-                  <span
-                    key={index}
-                    className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium"
-                  >
-                    {address.slice(0, 6)}...{address.slice(-4)}
-                  </span>
-                ))}
-                {tx.confirmedBy.length === 0 && (
+                {tx.confirmedBy && tx.confirmedBy.length > 0 ? (
+                  tx.confirmedBy.map((address, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium"
+                    >
+                      {address.slice(0, 6)}...{address.slice(-4)}
+                    </span>
+                  ))
+                ) : (
                   <span className="text-gray-500 text-sm">아직 승인자가 없습니다</span>
                 )}
               </div>
@@ -307,7 +340,7 @@ const MultiSigTransactionsPage = () => {
               </div>
               
               <div className="flex space-x-2">
-                {tx.status === 'pending' && !isConfirmedByUser(tx) && (
+                {!tx.executed && !isConfirmedByUser(tx) && (
                   <button
                     onClick={() => handleConfirmTransaction(tx.id)}
                     className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
@@ -316,7 +349,7 @@ const MultiSigTransactionsPage = () => {
                   </button>
                 )}
                 
-                {tx.status === 'pending' && isConfirmedByUser(tx) && (
+                {!tx.executed && isConfirmedByUser(tx) && (
                   <span className="px-4 py-2 bg-green-100 text-green-800 rounded-md text-sm font-medium">
                     이미 승인함
                   </span>
@@ -331,7 +364,7 @@ const MultiSigTransactionsPage = () => {
                   </button>
                 )}
                 
-                {tx.status === 'executed' && (
+                {tx.executed && (
                   <span className="px-4 py-2 bg-gray-100 text-gray-600 rounded-md text-sm">
                     실행 완료
                   </span>
@@ -339,11 +372,30 @@ const MultiSigTransactionsPage = () => {
               </div>
             </div>
           </div>
-        ))}
+          ))
+        ) : (
+          <div className="text-center py-12">
+            <div className="text-gray-500 mb-4">
+              <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">트랜잭션이 없습니다</h3>
+              <p className="text-gray-500 mb-4">
+                아직 제안된 트랜잭션이 없습니다.
+              </p>
+              <button
+                onClick={() => navigate(`/multisig/${address}/send`)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                첫 트랜잭션 제안하기
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 빈 상태 */}
-      {transactions.length === 0 && (
+      {/* 빈 상태 - 이제 위에서 처리됨 */}
+      {false && transactions.length === 0 && (
         <div className="text-center py-12">
           <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />

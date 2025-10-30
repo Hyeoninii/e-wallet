@@ -1,280 +1,344 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '../contexts/WalletContext';
+import { 
+  getOwners, 
+  proposeAddOwner, 
+  proposeRemoveOwner, 
+  proposeChangeThreshold,
+  confirmManagementTransaction,
+  revokeManagementConfirmation,
+  getManagementTransactionCount,
+  getManagementTransaction,
+  isManagementConfirmed,
+  getManagementConfirmationCount
+} from '../utils/multisig';
 
-/**
- * 다중서명 지갑 멤버 관리 페이지
- * 다중서명 지갑의 멤버 추가/제거 및 승인 임계값 변경 기능 제공
- */
 const MultiSigMembersPage = () => {
-  const { address } = useParams();
-  const navigate = useNavigate();
-  const { getMultiSigWalletData, currentWallet } = useWallet();
-  const [multisigWallet, setMultisigWallet] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [newMemberAddress, setNewMemberAddress] = useState('');
+  const { currentWallet, provider } = useWallet();
+  const [owners, setOwners] = useState([]);
+  const [managementTransactions, setManagementTransactions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [newOwnerAddress, setNewOwnerAddress] = useState('');
   const [newThreshold, setNewThreshold] = useState('');
 
+  // URL에서 contractAddress 추출
+  const contractAddress = window.location.pathname.split('/')[2];
+
   useEffect(() => {
-    const loadWalletData = async () => {
+    if (contractAddress && provider) {
+      loadData();
+    }
+  }, [contractAddress, provider]);
+
+  const loadData = async () => {
       try {
         setLoading(true);
-        setError(null);
-        
-        if (!address) {
-          throw new Error('다중서명 지갑 주소가 필요합니다.');
-        }
+      const ownersList = await getOwners(contractAddress, provider);
+      setOwners(ownersList);
 
-        console.log('다중서명 멤버 관리 페이지 - 지갑 데이터 로드 시작:', address);
-        const walletData = await getMultiSigWalletData(address);
-        console.log('다중서명 멤버 관리 페이지 - 지갑 데이터 로드 완료:', walletData);
-        
-        setMultisigWallet(walletData);
-        setNewThreshold(walletData.threshold.toString());
-      } catch (err) {
-        console.error('다중서명 멤버 관리 페이지 - 지갑 데이터 로드 실패:', err);
-        setError(err.message);
+      console.log('관리 트랜잭션 조회 시작...');
+      console.log('멤버 관리 페이지 - 컨트랙트 주소:', contractAddress);
+      console.log('멤버 관리 페이지 - 프로바이더 상태:', !!provider);
+      
+      const txCount = await getManagementTransactionCount(contractAddress, provider);
+      console.log('멤버 관리 페이지 - 관리 트랜잭션 수:', txCount);
+      console.log('멤버 관리 페이지 - 관리 트랜잭션 수 타입:', typeof txCount, txCount.toString());
+      
+      const txs = [];
+      for (let i = 0; i < txCount; i++) {
+        try {
+          console.log(`관리 트랜잭션 ${i} 조회 중...`);
+          const tx = await getManagementTransaction(contractAddress, i, provider);
+          const isConfirmedByUser = await isManagementConfirmed(contractAddress, i, currentWallet.address, provider);
+          const confirmCount = await getManagementConfirmationCount(contractAddress, i, provider);
+          
+          console.log(`관리 트랜잭션 ${i} 정보:`, { tx, isConfirmedByUser, confirmCount });
+          
+          txs.push({
+            ...tx,
+            txIndex: i,
+            isConfirmedByUser,
+            confirmCount
+          });
+        } catch (txError) {
+          console.warn(`관리 트랜잭션 ${i} 조회 실패:`, txError.message);
+        }
+      }
+      console.log('조회된 관리 트랜잭션 수:', txs.length);
+      setManagementTransactions(txs);
+    } catch (error) {
+      console.error('데이터 로드 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddOwner = async () => {
+    if (!newOwnerAddress.trim()) return;
+    
+    try {
+      setLoading(true);
+      console.log('멤버 추가 제안 시작:', { contractAddress, newOwnerAddress, provider: !!provider, hasPrivateKey: !!currentWallet.privateKey });
+      
+      const result = await proposeAddOwner(contractAddress, newOwnerAddress, provider, currentWallet.privateKey);
+      console.log('멤버 추가 제안 성공:', result);
+      
+      setNewOwnerAddress('');
+      await loadData();
+      alert('멤버 추가 제안이 생성되었습니다.');
+    } catch (error) {
+      console.error('멤버 추가 제안 실패:', error);
+      console.error('에러 상세:', error.message);
+      alert(`멤버 추가 제안에 실패했습니다: ${error.message}`);
       } finally {
         setLoading(false);
       }
     };
 
-    loadWalletData();
-  }, [address, getMultiSigWalletData]);
-
-  const handleAddMember = () => {
-    if (!newMemberAddress.trim()) {
-      alert('새 멤버 주소를 입력해주세요.');
-      return;
-    }
-
-    if (!newMemberAddress.startsWith('0x') || newMemberAddress.length !== 42) {
-      alert('유효한 이더리움 주소를 입력해주세요.');
-      return;
-    }
-
-    if (multisigWallet.owners.includes(newMemberAddress)) {
-      alert('이미 등록된 멤버입니다.');
-      return;
-    }
-
-    // TODO: 실제 멤버 추가 로직 구현
-    alert('멤버 추가 기능은 아직 구현되지 않았습니다.');
-  };
-
-  const handleRemoveMember = (memberAddress) => {
-    if (memberAddress.toLowerCase() === currentWallet?.address?.toLowerCase()) {
-      alert('자신을 제거할 수 없습니다.');
-      return;
-    }
-
-    if (multisigWallet.owners.length <= 1) {
-      alert('최소 1명의 멤버는 유지되어야 합니다.');
-      return;
-    }
-
-    // TODO: 실제 멤버 제거 로직 구현
-    alert('멤버 제거 기능은 아직 구현되지 않았습니다.');
-  };
-
-  const handleUpdateThreshold = () => {
-    const threshold = parseInt(newThreshold);
+  const handleRemoveOwner = async (ownerAddress) => {
+    if (!confirm(`${ownerAddress}를 멤버에서 제거하시겠습니까?`)) return;
     
-    if (isNaN(threshold) || threshold < 1) {
-      alert('승인 임계값은 1 이상이어야 합니다.');
+    try {
+      setLoading(true);
+      await proposeRemoveOwner(contractAddress, ownerAddress, provider, currentWallet.privateKey);
+      await loadData();
+      alert('멤버 제거 제안이 생성되었습니다.');
+    } catch (error) {
+      console.error('멤버 제거 제안 실패:', error);
+      alert('멤버 제거 제안에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChangeThreshold = async () => {
+    const threshold = parseInt(newThreshold);
+    if (isNaN(threshold) || threshold <= 0 || threshold > owners.length) {
+      alert('유효한 임계값을 입력해주세요.');
       return;
     }
 
-    if (threshold > multisigWallet.owners.length) {
-      alert('승인 임계값은 멤버 수보다 클 수 없습니다.');
-      return;
+    try {
+      setLoading(true);
+      console.log('임계값 변경 제안 시작:', { contractAddress, threshold, provider: !!provider, hasPrivateKey: !!currentWallet.privateKey });
+      
+      const result = await proposeChangeThreshold(contractAddress, threshold, provider, currentWallet.privateKey);
+      console.log('임계값 변경 제안 성공:', result);
+      
+      setNewThreshold('');
+      await loadData();
+      alert('임계값 변경 제안이 생성되었습니다.');
+    } catch (error) {
+      console.error('임계값 변경 제안 실패:', error);
+      console.error('에러 상세:', error.message);
+      alert(`임계값 변경 제안에 실패했습니다: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // TODO: 실제 임계값 변경 로직 구현
-    alert('임계값 변경 기능은 아직 구현되지 않았습니다.');
+  const handleConfirmTransaction = async (txIndex) => {
+    try {
+      setLoading(true);
+      await confirmManagementTransaction(contractAddress, txIndex, provider, currentWallet.privateKey);
+      await loadData();
+      alert('트랜잭션을 승인했습니다.');
+    } catch (error) {
+      console.error('트랜잭션 승인 실패:', error);
+      alert('트랜잭션 승인에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRevokeConfirmation = async (txIndex) => {
+    try {
+      setLoading(true);
+      await revokeManagementConfirmation(contractAddress, txIndex, provider, currentWallet.privateKey);
+      await loadData();
+      alert('승인을 취소했습니다.');
+    } catch (error) {
+      console.error('승인 취소 실패:', error);
+      alert('승인 취소에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTransactionTypeText = (txType) => {
+    switch (txType) {
+      case 0: return '멤버 추가';
+      case 1: return '멤버 제거';
+      case 2: return '임계값 변경';
+      default: return '알 수 없음';
+    }
+  };
+
+  const getTransactionDescription = (tx) => {
+    switch (tx.txType) {
+      case 0: return `멤버 추가: ${tx.targetAddress}`;
+      case 1: return `멤버 제거: ${tx.targetAddress}`;
+      case 2: return `임계값 변경: ${tx.newThreshold}`;
+      default: return '알 수 없음';
+    }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-500">다중서명 지갑 정보를 불러오는 중...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <p className="text-red-500 mb-4">오류: {error}</p>
-          <button
-            onClick={() => navigate('/')}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-          >
-            대시보드로 돌아가기
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!multisigWallet) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <p className="text-gray-500">다중서명 지갑을 찾을 수 없습니다.</p>
-        </div>
+        <div className="text-lg">로딩 중...</div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      {/* 페이지 헤더 */}
-      <div className="mb-6">
-        <div className="flex items-center mb-4">
-          <button
-            onClick={() => navigate(`/multisig/${address}`)}
-            className="mr-4 p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">멤버 관리</h1>
-            <p className="text-gray-600">지갑 주소: {address}</p>
-          </div>
-        </div>
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">멤버 관리</h1>
+        <p className="text-gray-600">멀티시그 지갑의 멤버와 임계값을 관리합니다.</p>
       </div>
 
-      <div className="space-y-6">
         {/* 현재 멤버 목록 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">현재 멤버 ({multisigWallet.owners.length}명)</h2>
-          
-          <div className="space-y-3">
-            {multisigWallet.owners.map((owner, index) => (
-              <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">현재 멤버 ({owners.length}명)</h2>
+        </div>
+
+        <div className="space-y-4">
+          {owners.map((owner, index) => (
+            <div key={owner} className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <span className="text-blue-600 font-semibold">
-                      {index + 1}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-mono text-sm text-gray-900">{owner}</p>
-                    <p className="text-xs text-gray-500">멤버 {index + 1}</p>
-                  </div>
+                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm">{index + 1}</span>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {owner.toLowerCase() === currentWallet?.address?.toLowerCase() && (
-                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                      현재 사용자
+                <div>
+                  <p className="font-medium text-gray-900">멤버 {index + 1}</p>
+                  <p className="text-sm text-gray-600 font-mono">{owner}</p>
+                  {owner.toLowerCase() === currentWallet.address.toLowerCase() && (
+                    <span className="inline-block mt-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                      나
                   </span>
                   )}
-                  {owner.toLowerCase() !== currentWallet?.address?.toLowerCase() && multisigWallet.owners.length > 1 && (
+                </div>
+              </div>
+              {owners.length > 1 && owner.toLowerCase() !== currentWallet.address.toLowerCase() && (
                     <button
-                      onClick={() => handleRemoveMember(owner)}
-                      className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors text-sm"
+                  onClick={() => handleRemoveOwner(owner)}
+                  className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
                     >
                       제거
                     </button>
                   )}
-              </div>
             </div>
           ))}
-        </div>
       </div>
 
-        {/* 새 멤버 추가 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">새 멤버 추가</h2>
-            
-            <div className="space-y-4">
-              <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">새 멤버 주소</label>
+        {/* 멤버 추가 섹션 */}
+        <div className="mt-6 p-4 border rounded-lg bg-blue-50">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">멤버 추가</h3>
               <div className="flex space-x-2">
                 <input
                   type="text"
-                  value={newMemberAddress}
-                  onChange={(e) => setNewMemberAddress(e.target.value)}
-                  placeholder="0x..."
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={newOwnerAddress}
+              onChange={(e) => setNewOwnerAddress(e.target.value)}
+              placeholder="새 멤버 주소 (0x...)"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               <button
-                onClick={handleAddMember}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              onClick={handleAddOwner}
+              disabled={!newOwnerAddress.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                   추가
               </button>
             </div>
+        </div>
+
+        {/* 임계값 변경 섹션 */}
+        <div className="mt-4 p-4 border rounded-lg bg-green-50">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">임계값 변경</h3>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">현재 임계값: {owners.length}명 중</span>
+            <input
+              type="number"
+              min="1"
+              max={owners.length}
+              value={newThreshold}
+              onChange={(e) => setNewThreshold(e.target.value)}
+              placeholder="새 임계값"
+              className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <span className="text-sm text-gray-600">명</span>
+            <button
+              onClick={handleChangeThreshold}
+              disabled={!newThreshold || parseInt(newThreshold) < 1 || parseInt(newThreshold) > owners.length}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              변경
+            </button>
           </div>
         </div>
         </div>
 
-        {/* 승인 임계값 변경 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">승인 임계값 변경</h2>
-          
+      {/* 관리 트랜잭션 목록 */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">관리 트랜잭션</h2>
+        
+        {managementTransactions.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">관리 트랜잭션이 없습니다.</p>
+        ) : (
           <div className="space-y-4">
+            {managementTransactions.map((tx) => (
+              <div key={tx.txIndex} className="border rounded-lg p-4 bg-gray-50">
+                <div className="flex justify-between items-start mb-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">새 승인 임계값</label>
-              <div className="flex items-center space-x-4">
-                <input
-                  type="number"
-                  value={newThreshold}
-                  onChange={(e) => setNewThreshold(e.target.value)}
-                  min="1"
-                  max={multisigWallet.owners.length}
-                  className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <span className="text-sm text-gray-600">
-                  (1 ~ {multisigWallet.owners.length} 사이의 값)
+                    <h3 className="font-medium text-gray-900">
+                      {getTransactionTypeText(tx.txType)}
+                    </h3>
+                    <p className="text-sm text-gray-600">{getTransactionDescription(tx)}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      tx.executed 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {tx.executed ? '완료' : '대기중'}
                 </span>
               </div>
             </div>
             
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center mb-2">
-                <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-                <span className="font-semibold text-yellow-900">주의사항</span>
-              </div>
-              <p className="text-yellow-800 text-sm">
-                승인 임계값을 변경하면 모든 멤버의 승인이 필요합니다. 
-                현재 임계값: <strong>{multisigWallet.threshold}</strong>명
-              </p>
+                <div className="flex justify-between items-center">
+                  <div className="text-sm text-gray-600">
+                    승인: {tx.confirmCount} / {owners.length}
           </div>
             
+                  {!tx.executed && (
+                    <div className="space-x-2">
+                      {tx.isConfirmedByUser ? (
+                        <button
+                          onClick={() => handleRevokeConfirmation(tx.txIndex)}
+                          className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
+                        >
+                          승인 취소
+                        </button>
+                      ) : (
             <button
-              onClick={handleUpdateThreshold}
-              className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors"
+                          onClick={() => handleConfirmTransaction(tx.txIndex)}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors"
             >
-              임계값 변경
+                          승인
             </button>
+                      )}
+                    </div>
+                  )}
             </div>
           </div>
-
-        {/* 정보 */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center mb-2">
-            <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="font-semibold text-blue-900">정보</span>
+            ))}
           </div>
-          <p className="text-blue-800 text-sm">
-            멤버 관리 기능은 스마트 컨트랙트의 함수를 호출하여 실행됩니다. 
-            모든 변경사항은 블록체인에 기록되며, 가스비가 발생할 수 있습니다.
-          </p>
-        </div>
+        )}
       </div>
+
     </div>
   );
 };

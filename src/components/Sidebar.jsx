@@ -8,7 +8,7 @@ import { useWallet } from '../contexts/WalletContext';
 const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentWallet, disconnectWallet, isReadOnly } = useWallet();
+  const { currentWallet, disconnectWallet, isReadOnly, isMultiSig } = useWallet();
 
   const menuItems = [
     {
@@ -58,6 +58,18 @@ const Sidebar = ({ isOpen, onClose }) => {
       description: '트랜잭션 히스토리'
     },
     {
+      id: 'members',
+      label: '멤버 관리',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+        </svg>
+      ),
+      path: '/wallet/members',
+      description: '멀티시그 멤버 관리',
+      showOnly: 'multisig'
+    },
+    {
       id: 'settings',
       label: '설정',
       icon: (
@@ -81,6 +93,14 @@ const Sidebar = ({ isOpen, onClose }) => {
     navigate('/');
     onClose();
   };
+
+  // 메뉴 필터링 (멀티시그 지갑일 때만 멤버 관리 메뉴 표시)
+  const filteredMenuItems = menuItems.filter(item => {
+    if (item.showOnly === 'multisig') {
+      return isMultiSig;
+    }
+    return true;
+  });
 
   return (
     <>
@@ -121,7 +141,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             <ul role="list" className="flex flex-1 flex-col gap-y-7">
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
-                  {menuItems.map((item) => {
+                  {filteredMenuItems.map((item) => {
                     const isActive = location.pathname === item.path;
                     const isDisabled = item.disabled;
                     
@@ -218,7 +238,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
             {/* 네비게이션 메뉴 */}
             <nav className="space-y-2">
-              {menuItems.map((item) => {
+              {filteredMenuItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 const isDisabled = item.disabled;
                 
