@@ -1,6 +1,11 @@
 import { ethers } from 'ethers';
 import { contractABI } from '../_contracts/MultiSigWallet.js';
 import { getMultiSigWalletBytecode } from './contractCompiler.js';
+import { 
+  deployPolicyContract, 
+  deployRolesContract, 
+  deployPolicyManagerContract 
+} from './contractDeployer.js';
 
 /**
  * 다중 서명 지갑 컨트랙트 배포
@@ -10,6 +15,110 @@ import { getMultiSigWalletBytecode } from './contractCompiler.js';
  * @param {number} threshold - 승인 임계값
  * @returns {Promise<Object>} 배포된 컨트랙트 정보
  */
+/**
+ * 통합 다중 서명 지갑 시스템 배포
+ * MultiSigWallet, PolicyManager, Policy, Roles 컨트랙트를 순차적으로 배포
+ * @param {Object} provider - 이더리움 프로바이더
+ * @param {string} privateKey - 배포자의 개인키
+ * @param {string[]} owners - 소유자 주소 배열
+ * @param {number} threshold - 승인 임계값
+ * @param {Object} policyData - 정책 데이터 (선택사항)
+ * @param {Object} rolesData - 직급 데이터 (선택사항)
+ * @returns {Promise<Object>} 배포된 모든 컨트랙트 정보
+ */
+export const deployIntegratedMultiSigSystem = async (provider, privateKey, owners, threshold, policyData = null, rolesData = null) => {
+  try {
+    console.log('통합 다중 서명 시스템 배포 시작...');
+    
+    // 1. MultiSigWallet 배포
+    console.log('1. MultiSigWallet 배포 중...');
+    const multisigResult = await deployMultiSigWallet(provider, privateKey, owners, threshold);
+    console.log('MultiSigWallet 배포 완료:', multisigResult.address);
+    
+    // 2. PolicyManager 배포
+    console.log('2. PolicyManager 배포 중...');
+    const policyManagerResult = await deployPolicyManagerContract(provider, privateKey);
+    console.log('PolicyManager 배포 완료:', policyManagerResult.address);
+    
+    // 3. Policy 컨트랙트 배포
+    console.log('3. Policy 컨트랙트 배포 중...');
+    const policyDataToUse = policyData || {
+      policyName: 'Default Policy',
+      description: 'Default policy for multi-signature wallet',
+      maxAmount: 10,
+      dailyLimit: 50,
+      requireApproval: true,
+      approvalThreshold: threshold,
+      timeLock: 0
+    };
+    
+    const policyResult = await deployPolicyContract(provider, privateKey, policyDataToUse);
+    console.log('Policy 컨트랙트 배포 완료:', policyResult.address);
+    
+    // 4. Roles 컨트랙트 배포
+    console.log('4. Roles 컨트랙트 배포 중...');
+    const rolesDataToUse = rolesData || {
+      rolesName: 'Default Roles',
+      description: 'Default role management system'
+    };
+    
+    const rolesResult = await deployRolesContract(provider, privateKey, rolesDataToUse);
+    console.log('Roles 컨트랙트 배포 완료:', rolesResult.address);
+    
+    // 5. PolicyManager 초기화
+    console.log('5. PolicyManager 초기화 중...');
+    const policyManagerABI = [
+      "function initialize(address _multisigWallet, address _policyContract, address _rolesContract) external"
+    ];
+    const policyManager = new ethers.Contract(policyManagerResult.address, policyManagerABI, new ethers.Wallet(privateKey, provider));
+    
+    const initTx = await policyManager.initialize(
+      multisigResult.address,
+      policyResult.address,
+      rolesResult.address
+    );
+    await initTx.wait();
+    console.log('PolicyManager 초기화 완료');
+    
+    const result = {
+      multisigWallet: {
+        address: multisigResult.address,
+        transactionHash: multisigResult.deploymentTx,
+        abi: contractABI
+      },
+      policyManager: {
+        address: policyManagerResult.address,
+        transactionHash: policyManagerResult.transactionHash,
+        abi: policyManagerResult.abi
+      },
+      policy: {
+        address: policyResult.address,
+        transactionHash: policyResult.transactionHash,
+        abi: policyResult.abi
+      },
+      roles: {
+        address: rolesResult.address,
+        transactionHash: rolesResult.transactionHash,
+        abi: rolesResult.abi
+      },
+      deploymentSummary: {
+        totalContracts: 4,
+        multisigAddress: multisigResult.address,
+        policyManagerAddress: policyManagerResult.address,
+        policyAddress: policyResult.address,
+        rolesAddress: rolesResult.address
+      }
+    };
+    
+    console.log('통합 다중 서명 시스템 배포 완료!', result.deploymentSummary);
+    return result;
+    
+  } catch (error) {
+    console.error('통합 다중 서명 시스템 배포 실패:', error);
+    throw new Error('통합 시스템 배포에 실패했습니다: ' + error.message);
+  }
+};
+
 export const deployMultiSigWallet = async (provider, privateKey, owners, threshold) => {
   try {
     console.log('다중 서명 지갑 배포 시작:', { owners, threshold });
