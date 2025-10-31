@@ -25,6 +25,11 @@ import MultiSigTransactionsPage from './pages/MultiSigTransactionsPage';
 import MultiSigMembersPage from './pages/MultiSigMembersPage';
 import MultiSigSettingsPage from './pages/MultiSigSettingsPage';
 
+// 정책 및 직급 관리 페이지들
+import RuleDefinitionPage from './pages/RuleDefinitionPage';
+import RoleManagementPage from './pages/RoleManagementPage';
+import DynamicMultiSigCreatePage from './pages/DynamicMultiSigCreatePage';
+
 /**
  * 메인 App 컴포넌트
  * 라우팅과 전역 상태 관리를 담당
@@ -49,12 +54,17 @@ function App() {
           
           {/* 다중 서명 페이지들 */}
           <Route path="/multisig/create" element={<CreateMultiSigPage />} />
+          <Route path="/multisig/create-dynamic" element={<DynamicMultiSigCreatePage />} />
           <Route path="/multisig/:address/join" element={<MultiSigJoinPage />} />
           <Route path="/multisig/:address" element={<MultiSigDashboardPage />} />
           <Route path="/multisig/:address/send" element={<MultiSigSendPage />} />
           <Route path="/multisig/:address/transactions" element={<MultiSigTransactionsPage />} />
           <Route path="/multisig/:address/members" element={<MultiSigMembersPage />} />
           <Route path="/multisig/:address/settings" element={<MultiSigSettingsPage />} />
+          
+          {/* 정책 및 직급 관리 페이지들 */}
+          <Route path="/multisig/:address/rules" element={<RuleDefinitionPage />} />
+          <Route path="/multisig/:address/roles" element={<RoleManagementPage />} />
         </Routes>
       </Layout>
     </WalletProvider>

@@ -20,11 +20,21 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
     event ManagementTransactionConfirmed(uint indexed txIndex, address indexed owner);
     event ManagementTransactionRevoked(uint indexed txIndex, address indexed owner);
     event ManagementTransactionExecuted(uint indexed txIndex);
+    
+    // Policy and Role Management events
+    event PolicyManagerUpdated(address indexed oldManager, address indexed newManager);
+    event PolicyContractUpdated(address indexed oldPolicy, address indexed newPolicy);
+    event RolesContractUpdated(address indexed oldRoles, address indexed newRoles);
 
     // --- State Variables ---
     address[] public owners;
     mapping(address => bool) public isOwner;
     uint public threshold;
+    
+    // Policy and Role Management
+    address public policyManager;
+    address public policyContract;
+    address public rolesContract;
 
     // Mapping from owner address to its index in the owners array for O(1) removal.
     mapping(address => uint) private ownerToIndex;
@@ -114,6 +124,61 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
         }
         threshold = _threshold;
         emit ThresholdChanged(_threshold);
+    }
+    
+    // --- Policy and Role Management Functions ---
+    
+    /**
+     * @dev PolicyManager 설정 (소유자만 호출 가능)
+     * @param _policyManager PolicyManager 컨트랙트 주소
+     */
+    function setPolicyManager(address _policyManager) external onlyOwner {
+        require(_policyManager != address(0), "Invalid policy manager address");
+        address oldManager = policyManager;
+        policyManager = _policyManager;
+        emit PolicyManagerUpdated(oldManager, _policyManager);
+    }
+    
+    /**
+     * @dev Policy 컨트랙트 설정 (소유자만 호출 가능)
+     * @param _policyContract Policy 컨트랙트 주소
+     */
+    function setPolicyContract(address _policyContract) external onlyOwner {
+        require(_policyContract != address(0), "Invalid policy contract address");
+        address oldPolicy = policyContract;
+        policyContract = _policyContract;
+        emit PolicyContractUpdated(oldPolicy, _policyContract);
+    }
+    
+    /**
+     * @dev Roles 컨트랙트 설정 (소유자만 호출 가능)
+     * @param _rolesContract Roles 컨트랙트 주소
+     */
+    function setRolesContract(address _rolesContract) external onlyOwner {
+        require(_rolesContract != address(0), "Invalid roles contract address");
+        address oldRoles = rolesContract;
+        rolesContract = _rolesContract;
+        emit RolesContractUpdated(oldRoles, _rolesContract);
+    }
+    
+    /**
+     * @dev PolicyManager를 통한 정책과 권한 컨트랙트 업데이트
+     * @param _policyContract 새로운 Policy 컨트랙트 주소
+     * @param _rolesContract 새로운 Roles 컨트랙트 주소
+     */
+    function updatePolicyAndRoles(address _policyContract, address _rolesContract) external onlyOwner {
+        require(policyManager != address(0), "Policy manager not set");
+        require(_policyContract != address(0), "Invalid policy contract address");
+        require(_rolesContract != address(0), "Invalid roles contract address");
+        
+        address oldPolicy = policyContract;
+        address oldRoles = rolesContract;
+        
+        policyContract = _policyContract;
+        rolesContract = _rolesContract;
+        
+        emit PolicyContractUpdated(oldPolicy, _policyContract);
+        emit RolesContractUpdated(oldRoles, _rolesContract);
     }
 
     // --- Receive Ether Function ---
@@ -349,6 +414,93 @@ contract ImprovedMultiSigWallet is ReentrancyGuard {
 
     function getManagementConfirmationCount(uint txIndex) public view returns (uint) {
         return managementTransactions[txIndex].confirmCount;
+    }
+    
+    // --- Policy and Role Integration Functions ---
+    
+    /**
+     * @dev 정책과 권한을 통합한 트랜잭션 검증
+     * @param to 수신자 주소
+     * @param value 전송할 ETH 금액
+     * @param data 트랜잭션 데이터
+     * @return bool 검증 통과 여부
+     * @return string 검증 실패 시 이유
+     */
+    function validateTransactionWithPolicy(
+        address to,
+        uint value,
+        bytes calldata data
+    ) public view returns (bool, string memory) {
+        // Policy 컨트랙트가 설정되어 있으면 정책 검증
+        if (policyContract != address(0)) {
+            // Policy 컨트랙트의 validateTransaction 함수 호출
+            (bool success, bytes memory returnData) = policyContract.staticcall(
+                abi.encodeWithSignature(
+                    "validateTransaction(address,address,uint256,address)",
+                    msg.sender,
+                    to,
+                    value,
+                    address(0) // ETH 전송이므로 토큰 주소는 0
+                )
+            );
+            
+            if (success) {
+                (bool policyApproved, string memory reason) = abi.decode(returnData, (bool, string));
+                if (!policyApproved) {
+                    return (false, reason);
+                }
+            }
+        }
+        
+        // Roles 컨트랙트가 설정되어 있으면 권한 검증
+        if (rolesContract != address(0)) {
+            // Roles 컨트랙트의 canExecuteTransaction 함수 호출
+            (bool success, bytes memory returnData) = rolesContract.staticcall(
+                abi.encodeWithSignature("canExecuteTransaction(address)", msg.sender)
+            );
+            
+            if (success) {
+                bool canExecute = abi.decode(returnData, (bool));
+                if (!canExecute) {
+                    return (false, "Insufficient role permissions");
+                }
+            }
+        }
+        
+        return (true, "Transaction approved");
+    }
+    
+    /**
+     * @dev 정책과 권한을 통합한 트랜잭션 제안
+     * @param to 수신자 주소
+     * @param value 전송할 ETH 금액
+     * @param data 트랜잭션 데이터
+     */
+    function submitTransactionWithPolicy(
+        address to,
+        uint value,
+        bytes calldata data
+    ) external onlyOwner {
+        // 정책과 권한 검증
+        (bool isValid, string memory reason) = validateTransactionWithPolicy(to, value, data);
+        require(isValid, reason);
+        
+        // 검증 통과 시 일반 트랜잭션 제안
+        submitTransaction(to, value, data);
+    }
+    
+    /**
+     * @dev 정책과 권한 정보 조회
+     * @return _policyManager PolicyManager 주소
+     * @return _policyContract Policy 컨트랙트 주소
+     * @return _rolesContract Roles 컨트랙트 주소
+     */
+    function getPolicyAndRolesInfo() public view returns (
+        address _policyManager,
+        address _policyContract,
+        address _rolesContract
+    ) {
+        return (policyManager, policyContract, rolesContract);
     }
 }
 

@@ -10,6 +10,7 @@ import {
 } from '../utils/wallet';
 import { 
   deployMultiSigWallet, 
+  deployIntegratedMultiSigSystem,
   getMultiSigWallet, 
   getMultiSigWalletInfo,
   validateOwners,
@@ -19,6 +20,11 @@ import {
   confirmTransaction,
   executeTransaction
 } from '../utils/multisig';
+import { 
+  deployDynamicContractSystem,
+  deployNewPolicyAndRolesViaManager,
+  deployIntegratedMultiSigSystem as deployIntegratedSystem
+} from '../utils/contractDeployer';
 
 // 지갑 컨텍스트 생성
 const WalletContext = createContext();
@@ -113,32 +119,8 @@ export const WalletProvider = ({ children }) => {
         console.error('에러 타입:', error.constructor.name);
         console.error('에러 메시지:', error.message);
 
-        // 2) 프록시로 폴백 시도 (CORS 회피용 백엔드 프록시)
-        try {
-          const proxyUrl = `${window.location.origin}/api/ethereum`;
-          console.log('프록시 폴백 시도:', proxyUrl);
-          const proxyProvider = new ethers.JsonRpcProvider(proxyUrl);
-
-          const timeoutPromise2 = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Proxy connection timeout after 10 seconds')), 10000);
-          });
-          const connectionPromise2 = Promise.all([
-            proxyProvider.getBlockNumber(),
-            proxyProvider.getNetwork()
-          ]);
-          const [proxyBlock, proxyNet] = await Promise.race([
-            connectionPromise2,
-            timeoutPromise2
-          ]);
-          console.log('프록시 연결 성공 - 블록:', proxyBlock, '네트워크:', proxyNet);
-          setProvider(proxyProvider);
-          setProviderSource('custom'); // 프록시를 통해서도 결국 커스텀 노드로 라우팅되는 가정
-        } catch (proxyErr) {
-          console.error('프록시 폴백 실패:', proxyErr);
-          setProvider(null);
-          setProviderSource(null);
-          setError('노드 연결에 실패했습니다. 커스텀 노드 또는 프록시 설정을 확인하세요.');
-        }
+        console.log('Infura로 전환 중...');
+        await connectToInfura();
       }
 
       // 저장된 지갑 목록 불러오기
@@ -497,7 +479,233 @@ export const WalletProvider = ({ children }) => {
   };
 
   /**
-   * 다중 서명 지갑 생성
+   * 동적 컨트랙트 시스템 생성
+   * 사용자 정의 권한과 정책에 따라 동적으로 컨트랙트를 생성하고 배포
+   * @param {string} name - 지갑 이름
+   * @param {Array} owners - 소유자 주소 목록
+   * @param {number} threshold - 임계값
+   * @param {Object} config - 동적 컨트랙트 설정
+   * @returns {Object} 생성된 동적 시스템 정보
+   */
+  const createDynamicMultiSigSystem = async (name, owners, threshold, config) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      if (!provider) {
+        throw new Error('네트워크에 연결되지 않았습니다.');
+      }
+
+      if (!currentWallet) {
+        throw new Error('현재 지갑이 선택되지 않았습니다.');
+      }
+
+      // 소유자 및 임계값 유효성 검사
+      const ownerValidation = validateOwners(owners);
+      if (!ownerValidation.valid) {
+        throw new Error(ownerValidation.error);
+      }
+
+      const thresholdValidation = validateThreshold(threshold, ownerValidation.owners.length);
+      if (!thresholdValidation.valid) {
+        throw new Error(thresholdValidation.error);
+      }
+
+      console.log('동적 다중 서명 시스템 생성 시작...', { name, owners, threshold, config });
+
+      // 동적 컨트랙트 시스템 배포
+      const deploymentResult = await deployIntegratedSystem(
+        provider,
+        currentWallet.privateKey,
+        ownerValidation.owners,
+        threshold,
+        config
+      );
+
+      console.log('동적 시스템 배포 완료:', deploymentResult);
+
+      // 다중 서명 지갑 데이터 생성
+      const multiSigWalletData = {
+        name,
+        address: deploymentResult.multisigWallet.address,
+        owners: ownerValidation.owners,
+        threshold,
+        deploymentTx: deploymentResult.multisigWallet.transactionHash,
+        createdAt: new Date().toISOString(),
+        type: 'multisig',
+        pending: false,
+        // 동적 시스템 정보 추가
+        dynamicSystem: {
+          policyManager: deploymentResult.policyManager,
+          policy: deploymentResult.dynamicContracts.policy,
+          roles: deploymentResult.dynamicContracts.roles,
+          metadata: deploymentResult.metadata,
+          deploymentSummary: {
+            customRoles: deploymentResult.metadata.customRoles,
+            amountRules: deploymentResult.metadata.amountRules,
+            deploymentType: 'dynamic'
+          }
+        }
+      };
+
+      // 현재 로컬 스토리지에서 최신 다중 서명 지갑 목록 불러오기
+      const currentMultiSigWallets = loadWalletData('savedMultiSigWallets') || [];
+      console.log('현재 저장된 다중 서명 지갑 목록:', currentMultiSigWallets);
+      
+      // 새로운 다중 서명 지갑 추가
+      const updatedMultiSigWallets = [...currentMultiSigWallets, multiSigWalletData];
+      console.log('업데이트된 다중 서명 지갑 목록:', updatedMultiSigWallets);
+      
+      setSavedMultiSigWallets(updatedMultiSigWallets);
+      
+      // 로컬 스토리지에 저장
+      saveWalletData('savedMultiSigWallets', updatedMultiSigWallets);
+      
+      console.log('동적 다중 서명 시스템 생성 완료:', multiSigWalletData);
+      return multiSigWalletData;
+    } catch (error) {
+      console.error('동적 다중 서명 시스템 생성 실패:', error);
+      setError(error.message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * 기존 다중서명 지갑에 새로운 정책과 권한 컨트랙트 배포
+   * @param {string} multisigAddress - 다중서명 지갑 주소
+   * @param {Object} config - 새로운 컨트랙트 설정
+   * @returns {Object} 배포 결과
+   */
+  const deployNewPolicyAndRoles = async (multisigAddress, config) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      if (!provider) {
+        throw new Error('네트워크에 연결되지 않았습니다.');
+      }
+
+      if (!currentWallet) {
+        throw new Error('현재 지갑이 선택되지 않았습니다.');
+      }
+
+      console.log('새로운 정책과 권한 컨트랙트 배포 시작:', { multisigAddress, config });
+
+      // PolicyManager를 통한 새로운 컨트랙트 배포
+      const deploymentResult = await deployNewPolicyAndRolesViaManager(
+        provider,
+        currentWallet.privateKey,
+        multisigAddress, // PolicyManager 주소로 가정
+        config
+      );
+
+      console.log('새로운 컨트랙트 배포 완료:', deploymentResult);
+
+      return deploymentResult;
+    } catch (error) {
+      console.error('새로운 정책과 권한 컨트랙트 배포 실패:', error);
+      setError(error.message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * 통합 다중 서명 지갑 시스템 생성 (기존 방식)
+   * MultiSigWallet, PolicyManager, Policy, Roles 컨트랙트를 모두 배포
+   * @param {string} name - 지갑 이름
+   * @param {Array} owners - 소유자 주소 목록
+   * @param {number} threshold - 임계값
+   * @param {Object} policyData - 정책 데이터 (선택사항)
+   * @param {Object} rolesData - 직급 데이터 (선택사항)
+   * @returns {Object} 생성된 통합 시스템 정보
+   */
+  const createIntegratedMultiSigSystem = async (name, owners, threshold, policyData = null, rolesData = null) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      if (!provider) {
+        throw new Error('네트워크에 연결되지 않았습니다.');
+      }
+
+      if (!currentWallet) {
+        throw new Error('현재 지갑이 선택되지 않았습니다.');
+      }
+
+      // 소유자 및 임계값 유효성 검사
+      const ownerValidation = validateOwners(owners);
+      if (!ownerValidation.valid) {
+        throw new Error(ownerValidation.error);
+      }
+
+      const thresholdValidation = validateThreshold(threshold, ownerValidation.owners.length);
+      if (!thresholdValidation.valid) {
+        throw new Error(thresholdValidation.error);
+      }
+
+      console.log('통합 다중 서명 시스템 생성 시작...', { name, owners, threshold, policyData, rolesData });
+
+      // 통합 시스템 배포
+      const deploymentResult = await deployIntegratedMultiSigSystem(
+        provider,
+        currentWallet.privateKey,
+        ownerValidation.owners,
+        threshold,
+        policyData,
+        rolesData
+      );
+
+      console.log('통합 시스템 배포 완료:', deploymentResult.deploymentSummary);
+
+      // 다중 서명 지갑 데이터 생성
+      const multiSigWalletData = {
+        name,
+        address: deploymentResult.multisigWallet.address,
+        owners: ownerValidation.owners,
+        threshold,
+        deploymentTx: deploymentResult.multisigWallet.transactionHash,
+        createdAt: new Date().toISOString(),
+        type: 'multisig',
+        pending: false,
+        // 통합 시스템 정보 추가
+        integratedSystem: {
+          policyManager: deploymentResult.policyManager,
+          policy: deploymentResult.policy,
+          roles: deploymentResult.roles,
+          deploymentSummary: deploymentResult.deploymentSummary
+        }
+      };
+
+      // 현재 로컬 스토리지에서 최신 다중 서명 지갑 목록 불러오기
+      const currentMultiSigWallets = loadWalletData('savedMultiSigWallets') || [];
+      console.log('현재 저장된 다중 서명 지갑 목록:', currentMultiSigWallets);
+      
+      // 새로운 다중 서명 지갑 추가
+      const updatedMultiSigWallets = [...currentMultiSigWallets, multiSigWalletData];
+      console.log('업데이트된 다중 서명 지갑 목록:', updatedMultiSigWallets);
+      
+      setSavedMultiSigWallets(updatedMultiSigWallets);
+      
+      // 로컬 스토리지에 저장
+      saveWalletData('savedMultiSigWallets', updatedMultiSigWallets);
+      
+      console.log('통합 다중 서명 시스템 생성 완료:', multiSigWalletData);
+      return multiSigWalletData;
+    } catch (error) {
+      console.error('통합 다중 서명 시스템 생성 실패:', error);
+      setError(error.message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * 다중 서명 지갑 생성 (기존 방식)
    * @param {string} name - 지갑 이름
    * @param {Array} owners - 소유자 주소 목록
    * @param {number} threshold - 임계값
@@ -812,6 +1020,9 @@ export const WalletProvider = ({ children }) => {
     
     // 다중 서명 지갑 액션
     createMultiSigWallet,
+    createIntegratedMultiSigSystem,
+    createDynamicMultiSigSystem,
+    deployNewPolicyAndRoles,
     getMultiSigWalletData,
     deleteMultiSigWallet,
     loadSavedMultiSigWallets,

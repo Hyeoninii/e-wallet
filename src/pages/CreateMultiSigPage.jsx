@@ -7,7 +7,7 @@ import { useWallet } from '../contexts/WalletContext';
  */
 const CreateMultiSigPage = () => {
   const navigate = useNavigate();
-  const { createMultiSigWallet, currentWallet, savedWallets, selectWallet, error, clearError } = useWallet();
+  const { createMultiSigWallet, createIntegratedMultiSigSystem, currentWallet, savedWallets, selectWallet, error, clearError } = useWallet();
   
   // 폼 상태
   const [walletName, setWalletName] = useState('');
@@ -15,6 +15,8 @@ const CreateMultiSigPage = () => {
   const [threshold, setThreshold] = useState(2);
   const [isLoading, setIsLoading] = useState(false);
   const [deploymentResult, setDeploymentResult] = useState(null);
+  const [showCompilationGuide, setShowCompilationGuide] = useState(false);
+  const [deploymentMode, setDeploymentMode] = useState('integrated'); // 'basic' or 'integrated'
 
   // 현재 지갑이 없고 저장된 지갑이 있으면 자동으로 선택
   React.useEffect(() => {
@@ -106,8 +108,18 @@ const CreateMultiSigPage = () => {
       
       // 생성 시작
       
-      // 실제 다중 서명 지갑 생성
-      const result = await createMultiSigWallet(walletName, validOwners, threshold);
+      // 배포 모드에 따라 다중 서명 지갑 생성
+      let result;
+      
+      if (deploymentMode === 'integrated') {
+        // 통합 시스템 배포 (PolicyManager, Policy, Roles 포함)
+        console.log('통합 다중 서명 시스템 생성 중...');
+        result = await createIntegratedMultiSigSystem(walletName, validOwners, threshold);
+      } else {
+        // 기본 다중 서명 지갑만 배포
+        console.log('기본 다중 서명 지갑 생성 중...');
+        result = await createMultiSigWallet(walletName, validOwners, threshold);
+      }
       
       setDeploymentResult(result);
       // 생성 완료
@@ -116,7 +128,14 @@ const CreateMultiSigPage = () => {
       
       if (result.address && result.address.startsWith('0x') && !result.pending) {
         // 실제 컨트랙트 주소인 경우
-        alert(`다중 서명 지갑이 성공적으로 생성되었습니다!\n주소: ${result.address}`);
+        console.log('실제 주소로 대시보드 이동:', result.address);
+        
+        if (deploymentMode === 'integrated') {
+          alert(`통합 다중 서명 시스템이 성공적으로 생성되었습니다!\n\n다중 서명 지갑: ${result.address}\n정책 관리자: ${result.integratedSystem.policyManager.address}\n정책 컨트랙트: ${result.integratedSystem.policy.address}\n직급 컨트랙트: ${result.integratedSystem.roles.address}`);
+        } else {
+          alert(`다중 서명 지갑이 성공적으로 생성되었습니다!\n주소: ${result.address}`);
+        }
+        
         navigate(`/multisig/${result.address}`);
       } else {
         // 배포가 아직 확인되지 않은 경우 - 대시보드로 이동
@@ -224,6 +243,17 @@ const CreateMultiSigPage = () => {
                       <p>다중 서명 지갑이 성공적으로 배포되었습니다!</p>
                       <p className="mt-1 font-mono">주소: {deploymentResult.address}</p>
                       <p className="mt-1">트랜잭션: {deploymentResult.deploymentTx}</p>
+                      
+                      {deploymentResult.integratedSystem && (
+                        <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                          <p className="text-sm font-medium text-blue-800 mb-2">통합 시스템 정보:</p>
+                          <div className="text-xs text-blue-700 space-y-1">
+                            <p>정책 관리자: {deploymentResult.integratedSystem.policyManager.address}</p>
+                            <p>정책 컨트랙트: {deploymentResult.integratedSystem.policy.address}</p>
+                            <p>직급 컨트랙트: {deploymentResult.integratedSystem.roles.address}</p>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -234,6 +264,49 @@ const CreateMultiSigPage = () => {
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <form onSubmit={(e) => { e.preventDefault(); handleCreateMultiSig(); }} className="space-y-6">
+            {/* 배포 모드 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                배포 모드
+              </label>
+              <div className="space-y-3">
+                <label className="flex items-start">
+                  <input
+                    type="radio"
+                    name="deploymentMode"
+                    value="integrated"
+                    checked={deploymentMode === 'integrated'}
+                    onChange={(e) => setDeploymentMode(e.target.value)}
+                    className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                  />
+                  <div className="ml-3">
+                    <div className="text-sm font-medium text-gray-900">통합 시스템 (권장)</div>
+                    <div className="text-sm text-gray-500">
+                      다중 서명 지갑 + 정책 관리자 + 정책 컨트랙트 + 직급 컨트랙트를 모두 배포합니다.
+                      정책과 직급 관리 기능을 사용할 수 있습니다.
+                    </div>
+                  </div>
+                </label>
+                
+                <label className="flex items-start">
+                  <input
+                    type="radio"
+                    name="deploymentMode"
+                    value="basic"
+                    checked={deploymentMode === 'basic'}
+                    onChange={(e) => setDeploymentMode(e.target.value)}
+                    className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                  />
+                  <div className="ml-3">
+                    <div className="text-sm font-medium text-gray-900">기본 다중 서명 지갑</div>
+                    <div className="text-sm text-gray-500">
+                      다중 서명 지갑만 배포합니다. 나중에 정책과 직급 기능을 추가할 수 있습니다.
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             {/* 지갑 이름 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
