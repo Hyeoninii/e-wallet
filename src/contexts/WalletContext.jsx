@@ -13,7 +13,6 @@ import {
   deployIntegratedMultiSigSystem,
   getMultiSigWallet, 
   getMultiSigWalletInfo,
-  isMultiSigWallet,
   validateOwners,
   validateThreshold,
   getMultiSigTransactions,
@@ -65,6 +64,8 @@ export const WalletProvider = ({ children }) => {
   
   // 이더리움 프로바이더 (Sepolia 테스트넷)
   const [provider, setProvider] = useState(null);
+  // 현재 사용 중인 프로바이더 소스: 'custom' | null
+  const [providerSource, setProviderSource] = useState(null);
 
   /**
    * 컴포넌트 마운트 시 초기화
@@ -81,11 +82,10 @@ export const WalletProvider = ({ children }) => {
       setIsLoading(true);
       setError(null);
 
-      // 프록시를 통한 노드 연결 (CORS 문제 해결)
-      const proxyUrl = `${window.location.origin}/api/ethereum`;
-      console.log('프록시 URL:', proxyUrl);
-      
-      const customProvider = new ethers.JsonRpcProvider(proxyUrl);
+      // 1) 커스텀 노드 직접 연결
+      const customNodeUrl = 'http://100.67.242.15:13500';
+      console.log('커스텀 노드 URL:', customNodeUrl);
+      const customProvider = new ethers.JsonRpcProvider(customNodeUrl);
       
       // 네트워크 정보 확인 및 연결 테스트 (10초 타임아웃)
       try {
@@ -109,12 +109,13 @@ export const WalletProvider = ({ children }) => {
         
         console.log('현재 블록 번호:', blockNumber);
         console.log('연결된 네트워크:', network);
-        console.log('Custom 노드 연결 성공!');
-        
+        // 커스텀 노드 연결 성공
+        console.log('✅ 커스텀 노드 연결 성공');
         setProvider(customProvider);
+        setProviderSource('custom');
         
       } catch (error) {
-        console.error('Custom 노드 연결 실패:', error);
+        console.error('커스텀 노드 연결 실패:', error);
         console.error('에러 타입:', error.constructor.name);
         console.error('에러 메시지:', error.message);
 
@@ -133,37 +134,6 @@ export const WalletProvider = ({ children }) => {
       setError('지갑 시스템 초기화에 실패했습니다: ' + error.message);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  /**
-   * Infura 연결
-   */
-  const connectToInfura = async () => {
-    try {
-      const infuraApiKey = '5dc76d758e1444e18669946ef9b04d0c';
-      const infuraUrl = `https://sepolia.infura.io/v3/${infuraApiKey}`;
-      
-      console.log('Infura 연결 시도 중...');
-      
-      const infuraProvider = new ethers.JsonRpcProvider(infuraUrl);
-      
-      // Infura 연결 테스트
-      const blockNumber = await infuraProvider.getBlockNumber();
-      const network = await infuraProvider.getNetwork();
-      
-      console.log('Infura 블록 번호:', blockNumber);
-      console.log('Infura 네트워크:', network);
-      console.log('✅ Infura 연결 성공!');
-      
-      setProvider(infuraProvider);
-      
-      // 사용자에게 알림
-      setError('Custom 노드 연결 실패로 Infura로 자동 전환되었습니다.');
-      
-    } catch (error) {
-      console.error('Infura 연결 실패:', error);
-      setError('모든 노드 연결에 실패했습니다. 네트워크를 확인해주세요.');
     }
   };
 
@@ -1036,6 +1006,7 @@ export const WalletProvider = ({ children }) => {
     isLoading,
     error,
     provider,
+    providerSource,
     
     // 액션
     createWallet,

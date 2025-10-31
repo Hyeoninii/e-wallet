@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../contexts/WalletContext';
-import { ethers } from 'ethers';
-import { weiToEth, shortenAddress, copyToClipboard } from '../utils/wallet';
+import { weiToEth, copyToClipboard } from '../utils/wallet';
 
 /**
  * 대시보드 메인 페이지
@@ -152,7 +151,7 @@ const DashboardPage = () => {
         </div>
         
         <div className="mt-4 text-sm text-gray-500">
-          네트워크: {provider?._getConnection?.url?.includes('infura') ? 'Infura (Sepolia)' : 'Custom Node (100.67.242.15:13500)'}
+          네트워크: Custom Node (100.67.242.15:13500)
         </div>
       </div>
 
