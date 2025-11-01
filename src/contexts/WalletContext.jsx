@@ -477,13 +477,32 @@ export const WalletProvider = ({ children }) => {
    */
   const deleteWallet = (address) => {
     try {
-      const updatedWallets = savedWallets.filter(wallet => wallet.address !== address);
+      // 로컬 스토리지에서 최신 데이터 로드
+      const currentWallets = loadWalletData('savedWallets') || [];
+      console.log('삭제 전 저장된 지갑 목록:', currentWallets);
+      console.log('삭제할 주소:', address);
+      
+      // 대소문자 구분 없이 주소 비교
+      const updatedWallets = currentWallets.filter(wallet => 
+        wallet.address?.toLowerCase() !== address?.toLowerCase()
+      );
+      
+      console.log('삭제 후 지갑 목록:', updatedWallets);
+      
+      // 상태 업데이트
       setSavedWallets(updatedWallets);
+      
+      // 로컬 스토리지에 저장
       saveWalletData('savedWallets', updatedWallets);
       
+      // 저장 확인
+      const verifyDeleted = loadWalletData('savedWallets') || [];
+      console.log('삭제 확인 - 로컬 스토리지에서 불러온 목록:', verifyDeleted);
+      
       // 현재 지갑이 삭제된 지갑이면 선택 해제
-      if (currentWallet?.address === address) {
+      if (currentWallet?.address?.toLowerCase() === address?.toLowerCase()) {
         setCurrentWallet(null);
+        saveWalletData('lastSelectedWallet', null);
       }
     } catch (error) {
       console.error('지갑 삭제 실패:', error);
@@ -655,15 +674,43 @@ export const WalletProvider = ({ children }) => {
 
   /**
    * 다중 서명 지갑 삭제
-   * @param {string} address - 삭제할 다중 서명 지갑 주소
+   * @param {string} addressOrTx - 삭제할 다중 서명 지갑 주소 또는 배포 트랜잭션 해시
    */
-  const deleteMultiSigWallet = (address) => {
+  const deleteMultiSigWallet = (addressOrTx) => {
     try {
-      const updatedMultiSigWallets = savedMultiSigWallets.filter(
-        wallet => wallet.address !== address
-      );
+      // 로컬 스토리지에서 최신 데이터 로드
+      const currentMultiSigWallets = loadWalletData('savedMultiSigWallets') || [];
+      console.log('삭제 전 저장된 다중 서명 지갑 목록:', currentMultiSigWallets);
+      console.log('삭제할 주소/트랜잭션:', addressOrTx);
+      
+      // 주소 또는 배포 트랜잭션 해시로 비교 (대소문자 구분 없이)
+      const updatedMultiSigWallets = currentMultiSigWallets.filter(wallet => {
+        const walletAddress = wallet.address?.toLowerCase();
+        const walletTx = wallet.deploymentTx?.toLowerCase();
+        const targetAddressOrTx = addressOrTx?.toLowerCase();
+        
+        // 주소가 있으면 주소로 비교, 없으면 배포 트랜잭션 해시로 비교
+        if (walletAddress) {
+          return walletAddress !== targetAddressOrTx;
+        } else if (walletTx) {
+          return walletTx !== targetAddressOrTx;
+        }
+        // 주소와 트랜잭션 해시가 모두 없으면 유지 (안전을 위해)
+        return true;
+      });
+      
+      console.log('삭제 후 다중 서명 지갑 목록:', updatedMultiSigWallets);
+      
+      // 상태 업데이트
       setSavedMultiSigWallets(updatedMultiSigWallets);
+      
+      // 로컬 스토리지에 저장
       saveWalletData('savedMultiSigWallets', updatedMultiSigWallets);
+      
+      // 저장 확인
+      const verifyDeleted = loadWalletData('savedMultiSigWallets') || [];
+      console.log('삭제 확인 - 로컬 스토리지에서 불러온 목록:', verifyDeleted);
+      console.log('삭제 확인 - 남은 다중 서명 지갑 개수:', verifyDeleted.length);
     } catch (error) {
       console.error('다중 서명 지갑 삭제 실패:', error);
       setError('다중 서명 지갑 삭제에 실패했습니다.');

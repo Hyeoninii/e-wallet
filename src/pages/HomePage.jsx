@@ -8,8 +8,11 @@ import { useWallet } from '../contexts/WalletContext';
 const HomePage = () => {
   const navigate = useNavigate();
   const { 
-    savedWallets, 
+    savedWallets,
+    savedMultiSigWallets,
     selectWallet, 
+    deleteWallet,
+    deleteMultiSigWallet,
     openWalletByAddress, 
     recoverWalletByPrivateKey,
     recoverWalletByMnemonic,
@@ -93,6 +96,58 @@ const HomePage = () => {
   };
 
   /**
+   * 다중 서명 지갑 열기
+   */
+  const handleOpenMultiSigWallet = (multiSigWallet) => {
+    if (multiSigWallet.address && !multiSigWallet.pending) {
+      navigate(`/multisig/${multiSigWallet.address}`);
+    } else if (multiSigWallet.deploymentTx) {
+      // 배포 대기 중인 경우
+      navigate(`/multisig/${multiSigWallet.deploymentTx}`);
+    }
+  };
+
+  /**
+   * 일반 지갑 삭제
+   */
+  const handleDeleteWallet = (e, wallet) => {
+    e.stopPropagation(); // 카드 클릭 이벤트 방지
+    
+    if (window.confirm(`"${wallet.name}" 지갑을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
+      try {
+        deleteWallet(wallet.address);
+      } catch (error) {
+        console.error('지갑 삭제 실패:', error);
+      }
+    }
+  };
+
+  /**
+   * 다중 서명 지갑 삭제
+   */
+  const handleDeleteMultiSigWallet = (e, wallet) => {
+    e.stopPropagation(); // 카드 클릭 이벤트 방지
+    
+    // 주소가 있으면 주소로, 없으면 배포 트랜잭션 해시로 삭제
+    const walletIdentifier = wallet.address || wallet.deploymentTx;
+    
+    if (!walletIdentifier) {
+      alert('삭제할 수 없습니다: 주소 또는 트랜잭션 해시가 없습니다.');
+      return;
+    }
+    
+    if (window.confirm(`"${wallet.name}" 다중 서명 지갑을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.\n(로컬에서만 삭제되며, 블록체인상의 컨트랙트는 삭제되지 않습니다.)`)) {
+      try {
+        console.log('다중 서명 지갑 삭제 시도:', walletIdentifier);
+        deleteMultiSigWallet(walletIdentifier);
+      } catch (error) {
+        console.error('다중 서명 지갑 삭제 실패:', error);
+        alert('다중 서명 지갑 삭제에 실패했습니다.');
+      }
+    }
+  };
+
+  /**
    * 모달 닫기
    */
   const handleCloseModal = () => {
@@ -116,7 +171,7 @@ const HomePage = () => {
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-sm text-gray-500">
-                {savedWallets.length}개의 지갑 저장됨
+                {savedWallets.length + savedMultiSigWallets.length}개의 지갑 저장됨
               </div>
             </div>
           </div>
@@ -237,42 +292,124 @@ const HomePage = () => {
         </div>
 
         {/* 저장된 지갑 목록 */}
-        {savedWallets.length > 0 && (
+        {(savedWallets.length > 0 || savedMultiSigWallets.length > 0) && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">내 지갑</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {savedWallets.map((wallet) => (
-                <div
-                  key={wallet.address}
-                  onClick={() => handleSelectWallet(wallet)}
-                  className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
-                >
-                  <div className="flex items-center mb-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                      <span className="text-blue-600 font-semibold text-sm">
-                        {wallet.name?.charAt(0)?.toUpperCase() || 'W'}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 truncate">{wallet.name}</div>
-                      <div className="text-xs text-gray-500 font-mono">
-                        {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
+            
+            {/* 일반 지갑 목록 */}
+            {savedWallets.length > 0 && (
+              <>
+                <h3 className="text-md font-medium text-gray-700 mb-3">일반 지갑</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                  {savedWallets.map((wallet) => (
+                    <div
+                      key={wallet.address}
+                      onClick={() => handleSelectWallet(wallet)}
+                      className="relative p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+                    >
+                      {/* 삭제 버튼 */}
+                      <button
+                        onClick={(e) => handleDeleteWallet(e, wallet)}
+                        className="absolute top-2 right-2 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors z-10"
+                        title="지갑 삭제"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                      
+                      <div className="flex items-center mb-3 pr-8">
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                          <span className="text-blue-600 font-semibold text-sm">
+                            {wallet.name?.charAt(0)?.toUpperCase() || 'W'}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{wallet.name}</div>
+                          <div className="text-xs text-gray-500 font-mono">
+                            {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          wallet.type === 'hd' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {wallet.type === 'hd' ? 'HD 지갑' : '개인키 지갑'}
+                        </span>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      wallet.type === 'hd' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {wallet.type === 'hd' ? 'HD 지갑' : '개인키 지갑'}
-                    </span>
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+
+            {/* 다중 서명 지갑 목록 */}
+            {savedMultiSigWallets.length > 0 && (
+              <>
+                <h3 className="text-md font-medium text-gray-700 mb-3">다중 서명 지갑</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {savedMultiSigWallets.map((wallet) => (
+                    <div
+                      key={wallet.address || wallet.deploymentTx}
+                      onClick={() => handleOpenMultiSigWallet(wallet)}
+                      className="relative p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+                    >
+                      {/* 삭제 버튼 */}
+                      <button
+                        onClick={(e) => handleDeleteMultiSigWallet(e, wallet)}
+                        className="absolute top-2 right-2 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors z-10"
+                        title="다중 서명 지갑 삭제"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                      
+                      <div className="flex items-center mb-3 pr-8">
+                        <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                          <span className="text-purple-600 font-semibold text-sm">
+                            {wallet.name?.charAt(0)?.toUpperCase() || 'M'}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{wallet.name}</div>
+                          <div className="text-xs text-gray-500 font-mono">
+                            {wallet.address 
+                              ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+                              : wallet.deploymentTx
+                                ? `배포 중: ${wallet.deploymentTx.slice(0, 6)}...${wallet.deploymentTx.slice(-4)}`
+                                : '주소 없음'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col items-start">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium mb-1 ${
+                            wallet.pending 
+                              ? 'bg-yellow-100 text-yellow-800' 
+                              : 'bg-purple-100 text-purple-800'
+                          }`}>
+                            {wallet.pending ? '배포 대기' : '다중 서명'}
+                          </span>
+                          {!wallet.pending && wallet.owners && (
+                            <span className="text-xs text-gray-500">
+                              {wallet.owners.length}명 / {wallet.threshold}명
+                            </span>
+                          )}
+                        </div>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
